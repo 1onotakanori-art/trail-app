@@ -1,13 +1,14 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { GanttProject, Task, Dependency } from '../types'
 import { ParentPopover, ChildPopover } from './GanttPopover'
-import { dailyLogsApi, projectsApi } from '../api/client'
+import { dailyLogsApi, projectsApi, dependenciesApi } from '../api/client'
 
 interface Props {
   projects: GanttProject[]
   viewMode?: 'all' | 'personal' | 'tag'
   selectedOwner?: string
   onRefresh: () => void
+  onChatOpen?: (projectId: string) => void  // 4-8: Chat button callback
 }
 
 const DAY_W = 38    // px per day
@@ -40,11 +41,15 @@ function formatDate(d: Date) {
   return `${d.getMonth() + 1}/${d.getDate()}`
 }
 
-export default function GanttChart({ projects, onRefresh }: Props) {
+export default function GanttChart({ projects, onRefresh, onChatOpen }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [popover, setPopover] = useState<{ type: 'parent' | 'child'; projectId: string; taskId?: string; date: string; rect: DOMRect; progress?: number } | null>(null)
   const [stateModal, setStateModal] = useState<{ projectId: string; field: 'state' | 'feeling'; rect: DOMRect } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  // 4-21: Dependency drag state
+  const [depDrag, setDepDrag] = useState<{ fromTaskId: string; projectId: string } | null>(null)
+  // 4-23: Task bar D&D state
+  const [taskDrag, setTaskDrag] = useState<{ taskId: string; startX: number; origStart: string; origEnd: string } | null>(null)
 
   // compute date range
   const allDates = projects.flatMap((p) => [isoToDate(p.start_date), isoToDate(p.end_date)])
@@ -75,11 +80,49 @@ export default function GanttChart({ projects, onRefresh }: Props) {
     setStateModal({ projectId, field, rect })
   }
 
+  // 4-4: Memoize StateModal onClose to prevent unnecessary re-renders
+  const handleStateModalClose = useCallback(() => setStateModal(null), [])
+
   const updateStateFeeling = async (projectId: string, field: string, value: string) => {
-    await projectsApi.update(projectId, { [field]: value })
-    setStateModal(null)
-    onRefresh()
+    try { // 4-2: try-catch
+      await projectsApi.update(projectId, { [field]: value })
+      setStateModal(null)
+      onRefresh()
+    } catch (err) {
+      console.error('Failed to update state/feeling:', err)
+    }
   }
+
+  // 4-21: Handle dependency creation via drag
+  const handleDepDrop = useCallback(async (toTaskId: string) => {
+    if (!depDrag || depDrag.fromTaskId === toTaskId) { setDepDrag(null); return }
+    try {
+      await dependenciesApi.create({ predecessor_id: depDrag.fromTaskId, successor_id: toTaskId, dep_type: 'FS' })
+      onRefresh()
+    } catch (err) {
+      console.error('Failed to create dependency:', err)
+    }
+    setDepDrag(null)
+  }, [depDrag, onRefresh])
+
+  // 4-23: Handle task bar D&D for date adjustment
+  const handleTaskDragEnd = useCallback(async (taskId: string, deltaPixels: number) => {
+    const deltaDays = Math.round(deltaPixels / DAY_W)
+    if (deltaDays === 0) { setTaskDrag(null); return }
+    if (!taskDrag) return
+    const newStart = addDays(isoToDate(taskDrag.origStart), deltaDays)
+    const newEnd = addDays(isoToDate(taskDrag.origEnd), deltaDays)
+    try {
+      await (await import('../api/client')).tasksApi.update(taskId, {
+        planned_start: newStart.toISOString().slice(0, 10),
+        planned_end: newEnd.toISOString().slice(0, 10),
+      })
+      onRefresh()
+    } catch (err) {
+      console.error('Failed to update task dates:', err)
+    }
+    setTaskDrag(null)
+  }, [taskDrag, onRefresh])
 
   // render rows
   const rows: React.ReactNode[] = []
@@ -102,6 +145,8 @@ export default function GanttChart({ projects, onRefresh }: Props) {
             {project.tasks.length > 0 ? (isExpanded ? '▼' : '▶') : ' '}
           </button>
           <span style={{ flex: 1, fontSize: '13px', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{project.name}</span>
+          {/* 4-8: Chat button on parent task row */}
+          {onChatOpen && <button style={iconBtn} onClick={(e) => { e.stopPropagation(); onChatOpen(project.id) }} title="チャット">💬</button>}
           <button style={iconBtn} onClick={(e) => handleStateClick(e, project.id, 'state')} title="State">{STATE_ICONS[project.state]}</button>
           <button style={iconBtn} onClick={(e) => handleStateClick(e, project.id, 'feeling')} title="Feeling">{FEELING_ICONS[project.feeling]}</button>
         </div>
@@ -152,9 +197,20 @@ export default function GanttChart({ projects, onRefresh }: Props) {
 
         rows.push(
           <div key={`task-${task.id}`} style={{ display: 'flex', height: ROW_H, alignItems: 'center', borderBottom: '1px solid #f0f0f0', background: '#fff' }}>
-            <div style={{ width: LABEL_W, minWidth: LABEL_W, padding: '0 8px 0 32px', display: 'flex', alignItems: 'center', overflow: 'hidden', borderRight: '1px solid #e0e0e0', height: '100%', gap: '4px' }}>
+            <div style={{ width: LABEL_W, minWidth: LABEL_W, padding: '0 8px 0 32px', display: 'flex', alignItems: 'center', overflow: 'hidden', borderRight: '1px solid #e0e0e0', height: '100%', gap: '4px' }}
+              // 4-21: Drop target for dependency creation
+              onDragOver={(e) => { if (depDrag) e.preventDefault() }}
+              onDrop={() => { if (depDrag) handleDepDrop(task.id) }}
+            >
               <span style={{ fontSize: '12px', color: '#888', marginRight: '4px' }}>├</span>
-              <span style={{ flex: 1, fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.title}</span>
+              <span style={{ flex: 1, fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                // 4-21: Drag handle for dependency creation
+                cursor: 'grab',
+              }}
+                draggable
+                onDragStart={() => setDepDrag({ fromTaskId: task.id, projectId: project.id })}
+                onDragEnd={() => setDepDrag(null)}
+              >{task.title}</span>
               <span style={{ fontSize: '11px', color: task.status === '完了' ? '#2e7d32' : task.status === '進行中' ? '#1565c0' : '#999' }}>
                 {task.status === '完了' ? '✓' : task.status === '進行中' ? '▶' : '○'}
               </span>
@@ -181,8 +237,17 @@ export default function GanttChart({ projects, onRefresh }: Props) {
                   />
                 )
               })}
-              {/* dependency arrows SVG */}
-              <DependencyArrows tasks={project.tasks} deps={project.dependencies} minDate={minDate} totalDays={totalDays} />
+              {/* dependency arrows SVG - 4-22: click to delete */}
+              <DependencyArrows tasks={project.tasks} deps={project.dependencies} minDate={minDate} totalDays={totalDays}
+                onDeleteDep={async (depId) => {
+                  try {
+                    await dependenciesApi.delete(depId)
+                    onRefresh()
+                  } catch (err) {
+                    console.error('Failed to delete dependency:', err)
+                  }
+                }}
+              />
             </div>
           </div>
         )
@@ -255,14 +320,14 @@ export default function GanttChart({ projects, onRefresh }: Props) {
         />
       )}
 
-      {/* State/Feeling modal */}
+      {/* State/Feeling modal - 4-4: onClose memoized via useCallback */}
       {stateModal && (
         <StateModal
           projectId={stateModal.projectId}
           field={stateModal.field}
           rect={stateModal.rect}
           onSelect={(v) => updateStateFeeling(stateModal.projectId, stateModal.field, v)}
-          onClose={() => setStateModal(null)}
+          onClose={handleStateModalClose}
         />
       )}
     </div>
@@ -271,7 +336,7 @@ export default function GanttChart({ projects, onRefresh }: Props) {
 
 // ── Dependency arrows ────────────────────────────────────────────────────
 
-function DependencyArrows({ tasks, deps, minDate, totalDays }: { tasks: Task[]; deps: Dependency[]; minDate: Date; totalDays: number }) {
+function DependencyArrows({ tasks, deps, minDate, totalDays, onDeleteDep }: { tasks: Task[]; deps: Dependency[]; minDate: Date; totalDays: number; onDeleteDep?: (depId: string) => void }) {
   const taskMap = Object.fromEntries(tasks.map((t) => [t.id, t]))
   if (!deps.length) return null
 
@@ -292,9 +357,21 @@ function DependencyArrows({ tasks, deps, minDate, totalDays }: { tasks: Task[]; 
 
     return (
       <g key={dep.id}>
+        {/* 4-22: Clickable invisible wider path for easy interaction */}
+        <path
+          d={`M${x1},${y1} C${x1 + 20},${y1} ${x2 - 20},${y2} ${x2},${y2}`}
+          fill="none" stroke="transparent" strokeWidth="10"
+          style={{ cursor: 'pointer', pointerEvents: 'stroke' }}
+          onClick={() => {
+            if (onDeleteDep && confirm('この依存関係を削除しますか？')) {
+              onDeleteDep(dep.id)
+            }
+          }}
+        />
         <path
           d={`M${x1},${y1} C${x1 + 20},${y1} ${x2 - 20},${y2} ${x2},${y2}`}
           fill="none" stroke="#1565c0" strokeWidth="1.5" markerEnd="url(#arrow)"
+          style={{ pointerEvents: 'none' }}
         />
       </g>
     )
@@ -305,13 +382,15 @@ function DependencyArrows({ tasks, deps, minDate, totalDays }: { tasks: Task[]; 
   const svgH = tasks.length * ROW_H
 
   return (
-    <svg style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', overflow: 'visible' }} width={svgW} height={svgH}>
+    <svg style={{ position: 'absolute', top: 0, left: 0, overflow: 'visible', pointerEvents: 'none' }} width={svgW} height={svgH}>
       <defs>
         <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
           <path d="M0,0 L0,6 L8,3 z" fill="#1565c0" />
         </marker>
       </defs>
-      {lines}
+      <g style={{ pointerEvents: 'auto' }}>
+        {lines}
+      </g>
     </svg>
   )
 }
@@ -439,6 +518,20 @@ function WeeklySummaryRow({ project, minDate }: { project: GanttProject; minDate
               <button onClick={() => { setEditContent(currentSummary?.content || ''); setEditing(true) }}
                 style={{ padding: '3px 10px', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}>
                 ✏ 編集
+              </button>
+              {/* 4-17 + 5-4: LLM generate button → API call */}
+              <button onClick={async () => {
+                if (!activeWeek) return
+                try {
+                  await (await import('../api/client')).dailyLogsApi.generateWeekly(project.id, activeWeek)
+                  const { data } = await dailyLogsApi.listWeekly(project.id)
+                  setSummaries(data)
+                } catch (err) {
+                  console.error('LLM generate failed:', err)
+                }
+              }}
+                style={{ padding: '3px 10px', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', background: '#fff8e1' }}>
+                🤖 LLM生成
               </button>
             </div>
           </div>

@@ -9,6 +9,9 @@ from auth import get_current_user
 
 router = APIRouter(tags=["milestones"])
 
+# 3-1: Column whitelist for milestones PATCH
+MILESTONES_ALLOWED_COLUMNS = {"title", "date", "description"}
+
 
 class MilestoneCreate(BaseModel):
     title: str
@@ -46,7 +49,7 @@ async def create_milestone(
     mid = str(uuid.uuid4())
     await db.execute(
         "INSERT INTO milestones (id, project_id, title, date, description) VALUES (?, ?, ?, ?, ?)",
-        (mid, project_id, body.title, body.date, body.description),
+        (mid, project_id, body.title, body.date, body.description or ""),
     )
     await db.commit()
     return {"id": mid}
@@ -62,6 +65,12 @@ async def update_milestone(
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     if not updates:
         raise HTTPException(400, "更新項目がありません")
+
+    # 3-1: Verify all column names are in whitelist
+    for col in updates:
+        if col not in MILESTONES_ALLOWED_COLUMNS:
+            raise HTTPException(400, f"不正なカラム名: {col}")
+
     set_clause = ", ".join(f"{k} = ?" for k in updates)
     await db.execute(
         f"UPDATE milestones SET {set_clause} WHERE id = ?",

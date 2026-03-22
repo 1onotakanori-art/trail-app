@@ -5,7 +5,7 @@ from typing import Optional
 import aiosqlite
 
 from database import get_db
-from auth import get_current_user, get_admin_user, get_password_hash
+from auth import get_current_user, get_admin_user, get_password_hash, verify_password
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
@@ -23,6 +23,15 @@ class UserUpdate(BaseModel):
 
 
 class PasswordReset(BaseModel):
+    new_password: str
+
+
+class ProfileUpdate(BaseModel):
+    display_name: Optional[str] = None
+
+
+class ChangePassword(BaseModel):
+    current_password: str
     new_password: str
 
 
@@ -72,6 +81,8 @@ async def update_user(
     if current_user["role"] != "admin" and current_user["id"] != user_id:
         raise HTTPException(status_code=403, detail="権限がありません")
 
+    # 3-1: Column whitelist for users
+    ALLOWED_COLUMNS = {"display_name", "role"}
     updates = {}
     if body.display_name is not None:
         updates["display_name"] = body.display_name
@@ -83,9 +94,66 @@ async def update_user(
     if not updates:
         raise HTTPException(status_code=400, detail="更新項目がありません")
 
+    # Verify all columns are in whitelist
+    for col in updates:
+        if col not in ALLOWED_COLUMNS:
+            raise HTTPException(status_code=400, detail=f"不正なカラム名: {col}")
+
     set_clause = ", ".join(f"{k} = ?" for k in updates)
     values = list(updates.values()) + [user_id]
     await db.execute(f"UPDATE users SET {set_clause} WHERE id = ?", values)
+    await db.commit()
+    return {"ok": True}
+
+
+# 2-4: PUT /api/users/{id}/profile
+@router.put("/{user_id}/profile")
+async def update_profile(
+    user_id: str,
+    body: ProfileUpdate,
+    current_user: dict = Depends(get_current_user),
+    db: aiosqlite.Connection = Depends(get_db),
+):
+    if current_user["id"] != user_id:
+        raise HTTPException(status_code=403, detail="自分のプロフィールのみ変更できます")
+
+    updates = {}
+    if body.display_name is not None:
+        updates["display_name"] = body.display_name
+
+    if not updates:
+        raise HTTPException(status_code=400, detail="更新項目がありません")
+
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    values = list(updates.values()) + [user_id]
+    await db.execute(f"UPDATE users SET {set_clause} WHERE id = ?", values)
+    await db.commit()
+    return {"ok": True}
+
+
+# 2-5: POST /api/users/{id}/change-password
+@router.post("/{user_id}/change-password")
+async def change_password(
+    user_id: str,
+    body: ChangePassword,
+    current_user: dict = Depends(get_current_user),
+    db: aiosqlite.Connection = Depends(get_db),
+):
+    if current_user["id"] != user_id:
+        raise HTTPException(status_code=403, detail="自分のパスワードのみ変更できます")
+
+    async with db.execute(
+        "SELECT password_hash FROM users WHERE id = ?", (user_id,)
+    ) as cur:
+        row = await cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="ユーザーが見つかりません")
+
+    if not verify_password(body.current_password, row["password_hash"]):
+        raise HTTPException(status_code=400, detail="現在のパスワードが正しくありません")
+
+    hashed = get_password_hash(body.new_password)
+    await db.execute("UPDATE users SET password_hash = ? WHERE id = ?", (hashed, user_id))
     await db.commit()
     return {"ok": True}
 

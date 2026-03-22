@@ -12,6 +12,12 @@ from websocket import manager
 
 router = APIRouter(tags=["tasks"])
 
+# 3-1: Column whitelist for tasks PATCH
+TASKS_ALLOWED_COLUMNS = {
+    "title", "planned_start", "planned_end", "status", "sort_order",
+    "actual_start", "actual_end",
+}
+
 
 class TaskCreate(BaseModel):
     title: str
@@ -107,6 +113,11 @@ async def update_task(
     if not updates:
         raise HTTPException(400, "更新項目がありません")
 
+    # 3-1: Verify all column names are in whitelist
+    for col in updates:
+        if col not in TASKS_ALLOWED_COLUMNS:
+            raise HTTPException(400, f"不正なカラム名: {col}")
+
     set_clause = ", ".join(f"{k} = ?" for k in updates)
     values = list(updates.values()) + [task_id]
     await db.execute(f"UPDATE tasks SET {set_clause} WHERE id = ?", values)
@@ -167,6 +178,10 @@ async def create_dependency(
     current_user: dict = Depends(get_current_user),
     db: aiosqlite.Connection = Depends(get_db),
 ):
+    # Validate dep_type is FS only
+    if body.dep_type != "FS":
+        raise HTTPException(400, "dep_type は 'FS' のみサポートされています")
+
     dep_id = str(uuid.uuid4())
     try:
         await db.execute(

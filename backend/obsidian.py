@@ -1,8 +1,10 @@
 """Obsidian Vault 連携モジュール"""
 import asyncio
 import hashlib
+import logging
 import os
 import re
+import time
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -11,6 +13,8 @@ import aiosqlite
 
 from config import settings
 from websocket import manager
+
+logger = logging.getLogger(__name__)
 
 
 def get_vault_path() -> Path:
@@ -157,8 +161,9 @@ def parse_frontmatter(text: str) -> dict:
     return result
 
 
+# 3-16: MD5 → SHA256 for file_hash
 def file_hash(path: Path) -> str:
-    h = hashlib.md5(path.read_bytes()).hexdigest()
+    h = hashlib.sha256(path.read_bytes()).hexdigest()
     return h
 
 
@@ -185,6 +190,22 @@ def get_vault_tree() -> dict:
     if not vault.exists():
         return {"name": vault.name, "path": "", "type": "dir", "children": []}
     return build_tree(vault, vault)
+
+
+# ── 3-5: Find ★ file by searching parent directories recursively ─────────
+
+def _find_star_file(note_path: Path, projects_dir: Path) -> Optional[Path]:
+    """Search from note_path's parent upward toward projects_dir for a ★*.md file."""
+    current = note_path.parent
+    while True:
+        star_files = list(current.glob("★*.md"))
+        if star_files:
+            return star_files[0]
+        # Stop if we've reached the projects dir
+        if current == projects_dir or current.parent == current:
+            break
+        current = current.parent
+    return None
 
 
 # ── Vault sync / watchdog ─────────────────────────────────────────────────
@@ -214,13 +235,12 @@ async def sync_note_file(note_path: Path, db_path: str):
     if "note" not in tags:
         return
 
-    # find project_id from parent folder's ★ file
-    project_folder = note_path.parent
-    star_files = list(project_folder.glob("★*.md"))
-    if not star_files:
+    # 3-5: find project_id from parent folder's ★ file (recursive search)
+    star_file = _find_star_file(note_path, projects_dir)
+    if not star_file:
         return
 
-    star_text = star_files[0].read_text(encoding="utf-8", errors="ignore")
+    star_text = star_file.read_text(encoding="utf-8", errors="ignore")
     star_fm = parse_frontmatter(star_text)
     project_id = star_fm.get("project_id")
     if not project_id:
@@ -279,7 +299,7 @@ async def sync_note_file(note_path: Path, db_path: str):
 
         await db.commit()
 
-    # WebSocket notification
+    # 3-11, 3-12: WebSocket notification
     await manager.broadcast({"type": "note_synced", "project_id": project_id, "path": rel_path})
     await manager.broadcast({"type": "vault_tree_updated"})
 
@@ -294,8 +314,9 @@ async def scan_vault(db_path: str):
         try:
             await sync_note_file(md_file, db_path)
             count += 1
-        except Exception:
-            pass
+        except Exception as e:
+            # 3-7: Log errors instead of silently swallowing
+            logger.warning(f"scan_vault: ファイル処理失敗 {md_file}: {e}")
     return count
 
 
@@ -313,11 +334,20 @@ async def start_watcher(db_path: str):
 
         class VaultHandler(FileSystemEventHandler):
             def __init__(self):
-                self._loop = asyncio.get_event_loop()
+                # 3-6: get_event_loop() → get_running_loop()
+                self._loop = asyncio.get_running_loop()
+                # 3-4: Debounce tracking
+                self._pending: dict[str, float] = {}
+                self._debounce_seconds = 1.0
 
             def _handle(self, path: str):
                 if not path.endswith(".md"):
                     return
+                now = time.time()
+                last = self._pending.get(path, 0)
+                if now - last < self._debounce_seconds:
+                    return  # debounce: skip rapid consecutive changes
+                self._pending[path] = now
                 asyncio.run_coroutine_threadsafe(
                     sync_note_file(Path(path), db_path), self._loop
                 )

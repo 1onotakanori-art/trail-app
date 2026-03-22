@@ -18,11 +18,12 @@ export function ParentPopover({ projectId, date, anchorRect, onClose }: ParentPo
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
+    // 4-2: try-catch for API call
     ganttApi.getDaily(projectId, date).then((res) => {
       setLogs(res.data)
       const existing = res.data.find((l: DailyLog) => l.comment)
       if (existing) setComment(existing.comment || '')
-    })
+    }).catch((err) => console.error('Failed to load daily data:', err))
   }, [projectId, date])
 
   useEffect(() => {
@@ -34,8 +35,12 @@ export function ParentPopover({ projectId, date, anchorRect, onClose }: ParentPo
   }, [onClose])
 
   const saveComment = async () => {
-    await dailyLogsApi.create(projectId, { date, comment })
-    setEditingComment(false)
+    try { // 4-2: try-catch
+      await dailyLogsApi.create(projectId, { date, comment })
+      setEditingComment(false)
+    } catch (err) {
+      console.error('Failed to save comment:', err)
+    }
   }
 
   const top = anchorRect.bottom + window.scrollY + 4
@@ -92,9 +97,13 @@ export function ChildPopover({ taskId, date, currentProgress, anchorRect, onClos
   }, [onClose])
 
   const handleProgress = async (p: number) => {
-    await tasksApi.setProgress(taskId, date, p)
-    onProgressChange(p)
-    onClose()
+    try { // 4-2: try-catch
+      await tasksApi.setProgress(taskId, date, p)
+      onProgressChange(p)
+      onClose()
+    } catch (err) {
+      console.error('Failed to set progress:', err)
+    }
   }
 
   const top = anchorRect.bottom + window.scrollY + 4

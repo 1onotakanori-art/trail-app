@@ -8,6 +8,8 @@ from auth import (
     verify_password,
     get_password_hash,
     create_access_token,
+    create_refresh_token,
+    decode_refresh_token,
     get_current_user,
 )
 
@@ -21,8 +23,19 @@ class LoginRequest(BaseModel):
 
 class LoginResponse(BaseModel):
     access_token: str
+    refresh_token: str
     token_type: str = "bearer"
     user: dict
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
+class RefreshResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -39,14 +52,38 @@ async def login(body: LoginRequest, db: aiosqlite.Connection = Depends(get_db)):
             detail="ユーザー名またはパスワードが正しくありません",
         )
 
-    token = create_access_token({"sub": row["id"]})
+    access_token = create_access_token({"sub": row["id"]})
+    refresh_token = create_refresh_token({"sub": row["id"]})
     user = {
         "id": row["id"],
         "username": row["username"],
         "display_name": row["display_name"],
         "role": row["role"],
     }
-    return LoginResponse(access_token=token, user=user)
+    return LoginResponse(access_token=access_token, refresh_token=refresh_token, user=user)
+
+
+@router.post("/refresh", response_model=RefreshResponse)
+async def refresh(body: RefreshRequest, db: aiosqlite.Connection = Depends(get_db)):
+    user_id = decode_refresh_token(body.refresh_token)
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="リフレッシュトークンが無効または期限切れです",
+        )
+
+    # Verify user still exists
+    async with db.execute("SELECT id FROM users WHERE id = ?", (user_id,)) as cur:
+        row = await cur.fetchone()
+    if not row:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="ユーザーが見つかりません",
+        )
+
+    new_access_token = create_access_token({"sub": user_id})
+    new_refresh_token = create_refresh_token({"sub": user_id})
+    return RefreshResponse(access_token=new_access_token, refresh_token=new_refresh_token)
 
 
 @router.get("/me")

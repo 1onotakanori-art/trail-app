@@ -2,12 +2,15 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { VaultNode } from '../types'
 import { vaultApi } from '../api/client'
 import ObsidianPreview from './ObsidianPreview'
+import { useAuth } from '../contexts/AuthContext'
+import { useWebSocket } from '../hooks/useWebSocket'
 
 interface Props {
   onClose: () => void
 }
 
 export default function VaultExplorer({ onClose }: Props) {
+  const { token } = useAuth()
   const [tree, setTree] = useState<VaultNode | null>(null)
   const [loading, setLoading] = useState(true)
   const [previewPath, setPreviewPath] = useState<string | null>(null)
@@ -26,11 +29,24 @@ export default function VaultExplorer({ onClose }: Props) {
 
   useEffect(() => { loadTree() }, [loadTree])
 
+  // 5-2: Auto-update on WS note_synced / vault_tree_updated events
+  useWebSocket(token, useCallback((data: unknown) => {
+    const d = data as { type: string }
+    if (d.type === 'note_synced' || d.type === 'vault_tree_updated') {
+      loadTree()
+    }
+  }, [loadTree]))
+
   const handleSync = async () => {
     setSyncing(true)
-    await vaultApi.sync()
-    setSyncing(false)
-    loadTree()
+    try { // 4-2: try-catch
+      await vaultApi.sync()
+      loadTree()
+    } catch (err) {
+      console.error('Failed to sync vault:', err)
+    } finally {
+      setSyncing(false)
+    }
   }
 
   return (

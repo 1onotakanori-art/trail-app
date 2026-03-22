@@ -1,6 +1,18 @@
-import axios from 'axios'
+import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
 
 const api = axios.create({ baseURL: '/api' })
+
+// 5-1: Track refresh state to avoid concurrent refresh calls
+let isRefreshing = false
+let failedQueue: { resolve: (token: string) => void; reject: (err: unknown) => void }[] = []
+
+function processQueue(error: unknown, token: string | null) {
+  failedQueue.forEach((prom) => {
+    if (error) prom.reject(error)
+    else prom.resolve(token!)
+  })
+  failedQueue = []
+}
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('trail_token')
@@ -10,11 +22,55 @@ api.interceptors.request.use((config) => {
 
 api.interceptors.response.use(
   (res) => res,
-  (err) => {
-    if (err.response?.status === 401) {
-      localStorage.removeItem('trail_token')
-      localStorage.removeItem('trail_user')
-      window.location.reload()
+  async (err: AxiosError) => {
+    const originalRequest = err.config as InternalAxiosRequestConfig & { _retry?: boolean }
+    // 5-1: JWT refresh flow — intercept 401 and attempt token refresh
+    if (err.response?.status === 401 && !originalRequest._retry) {
+      const refreshToken = localStorage.getItem('trail_refresh_token')
+      if (!refreshToken) {
+        // No refresh token available — force logout
+        localStorage.removeItem('trail_token')
+        localStorage.removeItem('trail_user')
+        localStorage.removeItem('trail_refresh_token')
+        window.location.reload()
+        return Promise.reject(err)
+      }
+
+      if (isRefreshing) {
+        // Another refresh is in progress — queue this request
+        return new Promise((resolve, reject) => {
+          failedQueue.push({
+            resolve: (token: string) => {
+              originalRequest.headers.Authorization = `Bearer ${token}`
+              resolve(api(originalRequest))
+            },
+            reject,
+          })
+        })
+      }
+
+      originalRequest._retry = true
+      isRefreshing = true
+
+      try {
+        const res = await axios.post('/api/auth/refresh', { refresh_token: refreshToken })
+        const { access_token, refresh_token: newRefresh } = res.data
+        localStorage.setItem('trail_token', access_token)
+        if (newRefresh) localStorage.setItem('trail_refresh_token', newRefresh)
+        api.defaults.headers.common.Authorization = `Bearer ${access_token}`
+        processQueue(null, access_token)
+        originalRequest.headers.Authorization = `Bearer ${access_token}`
+        return api(originalRequest)
+      } catch (refreshErr) {
+        processQueue(refreshErr, null)
+        localStorage.removeItem('trail_token')
+        localStorage.removeItem('trail_user')
+        localStorage.removeItem('trail_refresh_token')
+        window.location.reload()
+        return Promise.reject(refreshErr)
+      } finally {
+        isRefreshing = false
+      }
     }
     return Promise.reject(err)
   }
@@ -25,6 +81,8 @@ export default api
 export const authApi = {
   login: (username: string, password: string) =>
     api.post('/auth/login', { username, password }),
+  refresh: (refresh_token: string) =>
+    api.post('/auth/refresh', { refresh_token }),
   me: () => api.get('/auth/me'),
 }
 
@@ -38,6 +96,11 @@ export const usersApi = {
     api.post(`/users/${id}/reset-password`, { new_password }),
   updateSettings: (id: string, dashboard_widgets: unknown[]) =>
     api.patch(`/users/${id}/settings`, { dashboard_widgets }),
+  // 5-5: Profile update and password change
+  updateProfile: (id: string, data: { display_name: string }) =>
+    api.put(`/users/${id}/profile`, data),
+  changePassword: (id: string, data: { current_password: string; new_password: string }) =>
+    api.post(`/users/${id}/change-password`, data),
 }
 
 export const channelsApi = {
@@ -120,6 +183,11 @@ export const dailyLogsApi = {
   listWeekly: (projectId: string) => api.get(`/projects/${projectId}/weekly-summaries`),
   upsertWeekly: (projectId: string, week_start: string, data: { content: string; source?: string }) =>
     api.put(`/projects/${projectId}/weekly-summaries/${week_start}`, data),
+  // 5-4: LLM generate endpoint
+  generateWeekly: (projectId: string, week_start: string) =>
+    api.post(`/projects/${projectId}/weekly-summaries/${week_start}/generate`),
+  generateLogSummary: (logId: string) =>
+    api.post(`/daily-logs/${logId}/llm-summary`),
 }
 
 export const vaultApi = {

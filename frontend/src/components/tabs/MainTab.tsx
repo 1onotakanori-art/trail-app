@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { GanttProject, User, Channel } from '../../types'
-import { ganttApi, usersApi, messagesApi } from '../../api/client'
+import { ganttApi, usersApi, messagesApi, channelsApi } from '../../api/client'
 import { useAuth } from '../../contexts/AuthContext'
 import { useWebSocket } from '../../hooks/useWebSocket'
 import GanttChart from '../GanttChart'
@@ -22,8 +22,12 @@ function ChatPanel({ channel, onClose }: ChatPanelProps) {
 
   const loadMessages = useCallback(async () => {
     if (!channel) return
-    const res = await messagesApi.list(channel.id, { limit: 30 })
-    setMessages(res.data)
+    try { // 4-2: try-catch
+      const res = await messagesApi.list(channel.id, { limit: 30 })
+      setMessages(res.data)
+    } catch (err) {
+      console.error('Failed to load chat messages:', err)
+    }
   }, [channel])
 
   useEffect(() => { loadMessages() }, [loadMessages])
@@ -35,9 +39,13 @@ function ChatPanel({ channel, onClose }: ChatPanelProps) {
 
   const send = async () => {
     if (!input.trim() || !channel) return
-    await messagesApi.post(channel.id, { content: input.trim(), tag: tag || undefined })
-    setInput('')
-    loadMessages()
+    try { // 4-2: try-catch
+      await messagesApi.post(channel.id, { content: input.trim(), tag: tag || undefined })
+      setInput('')
+      loadMessages()
+    } catch (err) {
+      console.error('Failed to send message:', err)
+    }
   }
 
   const TAG_COLORS: Record<string, string> = { '報告': '#1565c0', '連絡': '#2e7d32', '相談': '#e65100' }
@@ -85,16 +93,36 @@ export default function MainTab() {
   const [showVault, setShowVault] = useState(false)
   const [chatChannel, setChatChannel] = useState<Channel | null>(null)
   const [showQuickAdd, setShowQuickAdd] = useState(false)
+  // 4-9: Chat panel toggle state
+  const [showChat, setShowChat] = useState(false)
 
   const loadGantt = useCallback(async () => {
-    const params: Record<string, string> = {}
-    if (viewMode === 'personal' && selectedOwner) params.owner_id = selectedOwner
-    const res = await ganttApi.getAll(params)
-    setProjects(res.data)
+    try { // 4-2: try-catch
+      const params: Record<string, string> = {}
+      if (viewMode === 'personal' && selectedOwner) params.owner_id = selectedOwner
+      const res = await ganttApi.getAll(params)
+      setProjects(res.data)
+    } catch (err) {
+      console.error('Failed to load gantt data:', err)
+    }
   }, [viewMode, selectedOwner])
 
   useEffect(() => { loadGantt() }, [loadGantt])
-  useEffect(() => { usersApi.list().then((r) => setUsers(r.data)) }, [])
+  useEffect(() => { usersApi.list().then((r) => setUsers(r.data)).catch(() => {}) }, [])
+
+  // 4-8: Handle chat button click from GanttChart parent row
+  const handleChatOpen = useCallback(async (projectId: string) => {
+    try {
+      const res = await channelsApi.list()
+      const ch = res.data.find((c: Channel) => c.project_id === projectId)
+      if (ch) {
+        setChatChannel(ch)
+        setShowChat(true)
+      }
+    } catch (err) {
+      console.error('Failed to load channel:', err)
+    }
+  }, [])
 
   useWebSocket(token, (data) => {
     const d = data as { type: string }
@@ -133,6 +161,24 @@ export default function MainTab() {
               {users.map((u) => <option key={u.id} value={u.id}>{u.display_name}</option>)}
             </select>
           )}
+          {/* 4-18: Export button placeholder */}
+          <button onClick={() => {
+            // 4-18: Gantt export - uses html2canvas + jsPDF (libraries would need to be installed)
+            const el = document.querySelector('[data-gantt-container]')
+            if (el) {
+              alert('ガントチャートをエクスポート中... (html2canvas + jsPDF が必要です)')
+            }
+          }}
+            style={{ padding: '5px 10px', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', background: '#fff' }}>
+            📥 エクスポート
+          </button>
+          {/* 4-9: Chat panel toggle button */}
+          <button
+            onClick={() => setShowChat(!showChat)}
+            style={{ padding: '5px 10px', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', background: showChat ? '#e3f2fd' : '#fff' }}
+          >
+            💬 チャット
+          </button>
           <button onClick={() => setShowQuickAdd(true)}
             style={{ marginLeft: 'auto', padding: '5px 14px', background: '#1a237e', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px' }}>
             ＋ 新規業務
@@ -146,13 +192,14 @@ export default function MainTab() {
             viewMode={viewMode}
             selectedOwner={selectedOwner}
             onRefresh={loadGantt}
+            onChatOpen={handleChatOpen}
           />
         </div>
       </div>
 
-      {/* Chat panel */}
-      {chatChannel && (
-        <ChatPanel channel={chatChannel} onClose={() => setChatChannel(null)} />
+      {/* Chat panel - 4-9: Show when toggle is on or a channel is selected */}
+      {(showChat || chatChannel) && (
+        <ChatPanel channel={chatChannel} onClose={() => { setChatChannel(null); setShowChat(false) }} />
       )}
 
       {showQuickAdd && (

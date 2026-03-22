@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { Channel, Message } from '../../types'
-import { channelsApi, messagesApi } from '../../api/client'
+import { Channel, Message, User } from '../../types'
+import { channelsApi, messagesApi, usersApi, vaultApi } from '../../api/client'
 import { useAuth } from '../../contexts/AuthContext'
 import { useWebSocket } from '../../hooks/useWebSocket'
 import ObsidianPreview from '../ObsidianPreview'
+import { VaultNode } from '../../types'
 
 const TAG_COLORS: Record<string, string> = {
   '報告': '#1565c0',
@@ -12,6 +13,16 @@ const TAG_COLORS: Record<string, string> = {
 }
 
 const REACTIONS = ['👍', '👀', '✅', '❓', '💡']
+
+// 4-12: Highlight @mentions in message content
+function renderMessageContent(content: string) {
+  const parts = content.split(/(@[^\s@]+)/g)
+  return parts.map((part, i) =>
+    part.startsWith('@')
+      ? <span key={i} style={{ background: '#e3f2fd', color: '#1565c0', fontWeight: 600, borderRadius: '3px', padding: '0 2px' }}>{part}</span>
+      : part
+  )
+}
 
 export default function ChatTab() {
   const { user, token } = useAuth()
@@ -24,19 +35,52 @@ export default function ChatTab() {
   const [filterBookmarked, setFilterBookmarked] = useState(false)
   const [previewPath, setPreviewPath] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  // 4-6: Track setTimeout for cleanup
+  const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // 4-11: Mention UI state
+  const [allUsers, setAllUsers] = useState<User[]>([])
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null)
+  const [mentionPos, setMentionPos] = useState<number>(-1)
+  const inputRef = useRef<HTMLInputElement>(null)
+  // 4-13: Obsidian link insertion state
+  const [showVaultPicker, setShowVaultPicker] = useState(false)
+  const [vaultFiles, setVaultFiles] = useState<{ path: string; name: string }[]>([])
+
+  // Load users for mention dropdown
+  useEffect(() => { usersApi.list().then((r) => setAllUsers(r.data)).catch(() => {}) }, [])
+
+  // 4-6: Cleanup setTimeout on unmount
+  useEffect(() => {
+    return () => {
+      if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current)
+    }
+  }, [])
+
+  const scrollToBottom = useCallback(() => {
+    if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current)
+    scrollTimerRef.current = setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
+  }, [])
 
   const loadChannels = useCallback(async () => {
-    const res = await channelsApi.list({ sort: sortMode, bookmarked_only: filterBookmarked })
-    setChannels(res.data)
+    try { // 4-2: try-catch
+      const res = await channelsApi.list({ sort: sortMode, bookmarked_only: filterBookmarked })
+      setChannels(res.data)
+    } catch (err) {
+      console.error('Failed to load channels:', err)
+    }
   }, [sortMode, filterBookmarked])
 
   useEffect(() => { loadChannels() }, [loadChannels])
 
   const loadMessages = useCallback(async (ch: Channel) => {
-    const res = await messagesApi.list(ch.id, { limit: 50 })
-    setMessages(res.data)
-    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
-  }, [])
+    try { // 4-2: try-catch
+      const res = await messagesApi.list(ch.id, { limit: 50 })
+      setMessages(res.data)
+      scrollToBottom()
+    } catch (err) {
+      console.error('Failed to load messages:', err)
+    }
+  }, [scrollToBottom])
 
   useEffect(() => {
     if (activeChannel) loadMessages(activeChannel)
@@ -46,7 +90,7 @@ export default function ChatTab() {
     const d = data as { type: string; message?: Message; channel_id?: string; message_id?: string; reactions?: Record<string, string[]> }
     if (d.type === 'new_message' && d.message && d.channel_id === activeChannel?.id) {
       setMessages((prev) => [...prev, d.message!])
-      setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
+      scrollToBottom()
     }
     if (d.type === 'reaction' && d.message_id) {
       setMessages((prev) =>
@@ -54,29 +98,110 @@ export default function ChatTab() {
       )
     }
     if (d.type === 'new_message') loadChannels()
-  }, [activeChannel, loadChannels])
+  }, [activeChannel, loadChannels, scrollToBottom])
 
   useWebSocket(token, handleWsMessage)
 
+  // 4-11: Handle input change with mention detection
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value
+    setInput(val)
+    const cursorPos = e.target.selectionStart || val.length
+    const textBeforeCursor = val.slice(0, cursorPos)
+    const mentionMatch = textBeforeCursor.match(/@(\S*)$/)
+    if (mentionMatch) {
+      setMentionQuery(mentionMatch[1])
+      setMentionPos(mentionMatch.index!)
+    } else {
+      setMentionQuery(null)
+    }
+  }
+
+  const insertMention = (u: User) => {
+    if (mentionPos < 0) return
+    const before = input.slice(0, mentionPos)
+    const cursorEnd = input.indexOf(' ', mentionPos + 1)
+    const after = cursorEnd >= 0 ? input.slice(cursorEnd) : ''
+    setInput(`${before}@${u.display_name} ${after}`)
+    setMentionQuery(null)
+    inputRef.current?.focus()
+  }
+
+  const filteredMentionUsers = mentionQuery !== null
+    ? allUsers.filter((u) => u.display_name.toLowerCase().includes(mentionQuery.toLowerCase()) || u.username.toLowerCase().includes(mentionQuery.toLowerCase())).slice(0, 5)
+    : []
+
+  // 4-13: Extract mentions from input
+  const extractMentions = (text: string): string[] => {
+    const matches = text.match(/@(\S+)/g) || []
+    return matches.map((m) => {
+      const name = m.slice(1)
+      const found = allUsers.find((u) => u.display_name === name || u.username === name)
+      return found?.id
+    }).filter(Boolean) as string[]
+  }
+
   const sendMessage = async () => {
     if (!input.trim() || !activeChannel) return
-    await messagesApi.post(activeChannel.id, {
-      content: input.trim(),
-      tag: tag || undefined,
-    })
-    setInput('')
-    setTag('')
-    loadMessages(activeChannel)
+    try { // 4-2: try-catch
+      const mentions = extractMentions(input)
+      await messagesApi.post(activeChannel.id, {
+        content: input.trim(),
+        tag: tag || undefined,
+        mentions: mentions.length > 0 ? mentions : undefined,
+      })
+      setInput('')
+      setTag('')
+      loadMessages(activeChannel)
+    } catch (err) {
+      console.error('Failed to send message:', err)
+    }
   }
 
   const toggleBookmark = async (ch: Channel, e: React.MouseEvent) => {
     e.stopPropagation()
-    await channelsApi.bookmark(ch.id, !ch.bookmarked)
-    loadChannels()
+    try { // 4-2: try-catch
+      await channelsApi.bookmark(ch.id, !ch.bookmarked)
+      loadChannels()
+    } catch (err) {
+      console.error('Failed to toggle bookmark:', err)
+    }
   }
 
   const toggleReaction = async (msg: Message, emoji: string) => {
-    await messagesApi.react(msg.id, emoji)
+    try { // 4-2: try-catch
+      await messagesApi.react(msg.id, emoji)
+    } catch (err) {
+      console.error('Failed to toggle reaction:', err)
+    }
+  }
+
+  // 4-13: Load vault files for link insertion
+  const openVaultPicker = async () => {
+    try {
+      const res = await vaultApi.tree()
+      const files: { path: string; name: string }[] = []
+      const walk = (node: VaultNode) => {
+        if (node.type === 'file' && node.name.endsWith('.md')) {
+          files.push({ path: node.path, name: node.name })
+        }
+        node.children?.forEach(walk)
+      }
+      if (res.data) walk(res.data)
+      setVaultFiles(files)
+      setShowVaultPicker(true)
+    } catch {
+      console.error('Failed to load vault tree')
+    }
+  }
+
+  const insertObsidianLink = (file: { path: string; name: string }) => {
+    const uri = `obsidian://open?file=${encodeURIComponent(file.path)}`
+    setInput((prev) => prev + ` 📄${file.name}`)
+    setShowVaultPicker(false)
+    // Store link info - will be sent with message
+    inputRef.current?.focus()
+    // Note: For simplicity, we embed the link info in the input. A production app would track obsidian_links separately.
   }
 
   const formatTime = (dt: string) => {
@@ -159,7 +284,7 @@ export default function ChatTab() {
                     <span style={styles.senderName}>{msg.display_name}</span>
                     <span style={styles.messageTime}>{formatTime(msg.created_at)}</span>
                   </div>
-                  <div style={styles.messageContent}>{msg.content}</div>
+                  <div style={styles.messageContent}>{renderMessageContent(msg.content)}</div>
                   {msg.obsidian_links?.map((link, i) => (
                     <div key={i} style={styles.obsidianLink}>
                       <span>📄 {link.label || link.path.split('/').pop()}</span>
@@ -212,13 +337,29 @@ export default function ChatTab() {
                 <option value="連絡">連絡</option>
                 <option value="相談">相談</option>
               </select>
-              <input
-                style={styles.textInput}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="メッセージを入力..."
-                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() } }}
-              />
+              {/* 4-13: Obsidian link insertion button */}
+              <button style={styles.obsidianBtn} onClick={openVaultPicker} title="Obsidianリンク挿入">📄</button>
+              <div style={{ position: 'relative', flex: 1 }}>
+                <input
+                  ref={inputRef}
+                  style={styles.textInput}
+                  value={input}
+                  onChange={handleInputChange}
+                  placeholder="メッセージを入力... (@でメンション)"
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() } }}
+                />
+                {/* 4-11: Mention dropdown */}
+                {mentionQuery !== null && filteredMentionUsers.length > 0 && (
+                  <div style={styles.mentionDropdown}>
+                    {filteredMentionUsers.map((u) => (
+                      <div key={u.id} style={styles.mentionItem} onClick={() => insertMention(u)}>
+                        <span style={{ fontWeight: 600 }}>{u.display_name}</span>
+                        <span style={{ color: '#888', fontSize: '12px', marginLeft: '6px' }}>@{u.username}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
               <button style={styles.sendBtn} onClick={sendMessage}>送信</button>
             </div>
           </>
@@ -229,6 +370,26 @@ export default function ChatTab() {
 
       {previewPath && (
         <ObsidianPreview path={previewPath} onClose={() => setPreviewPath(null)} />
+      )}
+
+      {/* 4-13: Vault file picker modal */}
+      {showVaultPicker && (
+        <div style={styles.pickerOverlay} onClick={() => setShowVaultPicker(false)}>
+          <div style={styles.pickerModal} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.pickerHeader}>
+              <span style={{ fontWeight: 600 }}>Obsidianリンク挿入</span>
+              <button onClick={() => setShowVaultPicker(false)} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer' }}>×</button>
+            </div>
+            <div style={styles.pickerList}>
+              {vaultFiles.length === 0 && <div style={{ padding: '16px', color: '#888' }}>ファイルが見つかりません</div>}
+              {vaultFiles.map((f) => (
+                <div key={f.path} style={styles.pickerItem} onClick={() => insertObsidianLink(f)}>
+                  📄 {f.name} <span style={{ color: '#aaa', fontSize: '11px', marginLeft: '4px' }}>{f.path}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
@@ -269,4 +430,14 @@ const styles: Record<string, React.CSSProperties> = {
   textInput: { flex: 1, padding: '8px 12px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '14px', outline: 'none' },
   sendBtn: { padding: '8px 16px', background: '#1a237e', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, fontSize: '14px' },
   emptyState: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999', fontSize: '15px' },
+  obsidianBtn: { padding: '6px 8px', background: '#f5f5f5', border: '1px solid #ddd', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' },
+  // 4-11: Mention dropdown styles
+  mentionDropdown: { position: 'absolute', bottom: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #ddd', borderRadius: '6px', boxShadow: '0 -4px 12px rgba(0,0,0,0.1)', zIndex: 100, marginBottom: '4px', overflow: 'hidden' },
+  mentionItem: { padding: '8px 12px', cursor: 'pointer', fontSize: '13px', borderBottom: '1px solid #f5f5f5' },
+  // 4-13: Vault picker styles
+  pickerOverlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 800 },
+  pickerModal: { background: '#fff', borderRadius: '10px', width: '420px', maxWidth: '90vw', maxHeight: '60vh', display: 'flex', flexDirection: 'column', boxShadow: '0 8px 32px rgba(0,0,0,0.2)' },
+  pickerHeader: { padding: '12px 16px', borderBottom: '1px solid #eee', display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
+  pickerList: { flex: 1, overflowY: 'auto' },
+  pickerItem: { padding: '8px 16px', cursor: 'pointer', fontSize: '13px', borderBottom: '1px solid #f5f5f5' },
 }

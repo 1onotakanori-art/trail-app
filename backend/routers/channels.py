@@ -17,7 +17,7 @@ class BookmarkUpdate(BaseModel):
 
 @router.get("")
 async def list_channels(
-    sort: str = Query("updated", regex="^(updated|created|bookmarked|unread)$"),
+    sort: str = Query("updated", pattern="^(updated|created|bookmarked|unread)$"),
     bookmarked_only: bool = False,
     current_user: dict = Depends(get_current_user),
     db: aiosqlite.Connection = Depends(get_db),

@@ -12,6 +12,12 @@ from websocket import manager
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
+# 3-1: Column whitelist for projects PATCH
+PROJECTS_ALLOWED_COLUMNS = {
+    "name", "owner_id", "state", "feeling", "feeling_updated_at",
+    "start_date", "end_date", "tags", "box_url", "box_local_path",
+}
+
 
 def _next_project_id(existing_ids: list[str], date_str: str) -> str:
     prefix = f"P-{date_str}-"
@@ -152,6 +158,13 @@ async def create_project(
             (channel_id, uid),
         )
 
+    # 3-8: Resolve owner_id to display_name for notification body
+    async with db.execute(
+        "SELECT display_name FROM users WHERE id = ?", (body.owner_id,)
+    ) as cur:
+        owner_row = await cur.fetchone()
+    owner_display_name = owner_row["display_name"] if owner_row else body.owner_id
+
     # create notifications
     async with db.execute("SELECT id FROM users", ()) as cur:
         all_users = [r["id"] for r in await cur.fetchall()]
@@ -161,8 +174,11 @@ async def create_project(
         await db.execute(
             """INSERT INTO notifications (id, user_id, type, title, body, link_type, link_id)
                VALUES (?, ?, 'project_created', ?, ?, 'project', ?)""",
-            (notif_id, uid, f"新規業務: {body.name}", f"担当: {body.owner_id}", project_id),
+            (notif_id, uid, f"新規業務: {body.name}", f"担当: {owner_display_name}", project_id),
         )
+
+    # 3-14: Send generic notification WS event
+    await manager.broadcast({"type": "notification"})
 
     # FTS
     await db.execute(
@@ -178,15 +194,10 @@ async def create_project(
     # trigger Obsidian folder creation
     try:
         from obsidian import create_project_folder
-        async with db.execute(
-            "SELECT display_name FROM users WHERE id = ?", (body.owner_id,)
-        ) as cur:
-            owner_row = await cur.fetchone()
-        owner_name = owner_row["display_name"] if owner_row else ""
         await create_project_folder(
             project_id=project_id,
             project_name=body.name,
-            owner_name=owner_name,
+            owner_name=owner_display_name,
             start_date=body.start_date,
             end_date=body.end_date,
             box_url=body.box_url or "",
@@ -249,6 +260,11 @@ async def update_project(
 
     if not updates:
         raise HTTPException(400, "更新項目がありません")
+
+    # 3-1: Verify all column names are in whitelist
+    for col in updates:
+        if col not in PROJECTS_ALLOWED_COLUMNS:
+            raise HTTPException(400, f"不正なカラム名: {col}")
 
     set_clause = ", ".join(f"{k} = ?" for k in updates)
     values = list(updates.values()) + [project_id]

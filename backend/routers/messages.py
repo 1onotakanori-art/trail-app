@@ -138,6 +138,10 @@ async def post_message(
     for uid in body.mentions:
         await manager.send_to_user(uid, {"type": "mention", "channel_id": channel_id})
 
+    # 3-14: Send generic notification WS event for notification bell update
+    if body.mentions:
+        await manager.broadcast({"type": "notification"})
+
     return {"id": msg_id}
 
 

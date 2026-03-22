@@ -22,14 +22,18 @@ export default function ProjectsTab() {
   const [closeProject, setCloseProject] = useState<Project | null>(null)
 
   const load = useCallback(async () => {
-    const params: Record<string, unknown> = {}
-    if (displayMode === 'active') params.archived = false
-    else if (displayMode === 'archived') params.archived = true
-    if (filterOwner) params.owner_id = filterOwner
-    const res = await projectsApi.list(params as Record<string, boolean | string>)
-    let data: Project[] = res.data
-    if (filterTag) data = data.filter((p) => p.tags.includes(filterTag))
-    setProjects(data)
+    try { // 4-2: try-catch
+      const params: Record<string, unknown> = {}
+      if (displayMode === 'active') params.archived = false
+      else if (displayMode === 'archived') params.archived = true
+      if (filterOwner) params.owner_id = filterOwner
+      const res = await projectsApi.list(params as Record<string, boolean | string>)
+      let data: Project[] = res.data
+      if (filterTag) data = data.filter((p) => p.tags.includes(filterTag))
+      setProjects(data)
+    } catch (err) {
+      console.error('Failed to load projects:', err)
+    }
   }, [displayMode, filterOwner, filterTag])
 
   useEffect(() => { load() }, [load])

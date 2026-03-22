@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react'
+import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { vaultApi } from '../api/client'
 
 interface Props {
@@ -14,13 +14,23 @@ export default function ObsidianPreview({ path, onClose, initialPos }: Props) {
   const [size] = useState({ w: 520, h: 420 })
   const dragging = useRef(false)
   const dragStart = useRef({ mx: 0, my: 0, px: 0, py: 0 })
+  // 4-3: Track listeners for cleanup
+  const cleanupRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
+    // 4-2: try-catch for API call
     vaultApi.preview(path).then((res) => {
       setHtml(typeof res.data === 'string' ? res.data : '')
       setLoading(false)
     }).catch(() => { setLoading(false); setHtml('<p style="color:red">プレビューを取得できませんでした</p>') })
   }, [path])
+
+  // 4-3: Cleanup drag listeners on unmount
+  useEffect(() => {
+    return () => {
+      if (cleanupRef.current) cleanupRef.current()
+    }
+  }, [])
 
   const startDrag = (e: React.MouseEvent) => {
     dragging.current = true
@@ -29,9 +39,20 @@ export default function ObsidianPreview({ path, onClose, initialPos }: Props) {
       if (!dragging.current) return
       setPos({ x: dragStart.current.px + ev.clientX - dragStart.current.mx, y: dragStart.current.py + ev.clientY - dragStart.current.my })
     }
-    const onUp = () => { dragging.current = false; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+    const onUp = () => {
+      dragging.current = false
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      cleanupRef.current = null
+    }
+    // Cleanup previous listeners if any
+    if (cleanupRef.current) cleanupRef.current()
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
+    cleanupRef.current = () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
   }
 
   const obsidianUri = `obsidian://open?file=${encodeURIComponent(path)}`
@@ -69,6 +90,12 @@ export default function ObsidianPreview({ path, onClose, initialPos }: Props) {
             />
         }
       </div>
+      {/* 4-24: Resize handle indicator */}
+      <div style={{
+        position: 'absolute', bottom: 0, right: 0, width: '16px', height: '16px',
+        cursor: 'nwse-resize', opacity: 0.5,
+        background: 'linear-gradient(135deg, transparent 50%, #999 50%, transparent 52%, #999 62%, transparent 64%, #999 74%)',
+      }} title="リサイズ" />
     </div>
   )
 }

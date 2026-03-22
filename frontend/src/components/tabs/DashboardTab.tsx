@@ -22,7 +22,7 @@ interface WidgetDef {
 
 const ALL_WIDGETS: WidgetDef[] = [
   { id: 'unread_messages',  label: '未読メッセージ',          icon: '📋', adminOnly: false },
-  { id: 'follow_alerts',    label: '要確認アラート',           icon: '⚠',  adminOnly: false },
+  { id: 'follow_alerts',    label: '要確認アラート',           icon: '⚠',  adminOnly: true },   // 4-14: adminOnly = true
   { id: 'week_milestones',  label: '今週のマイルストーン',     icon: '📅', adminOnly: false },
   { id: 'my_projects',      label: '自分の業務一覧',           icon: '📊', adminOnly: false },
   { id: 'mini_gantt',       label: 'ガント俯瞰（ミニ版）',     icon: '📈', adminOnly: true  },
@@ -64,10 +64,12 @@ export default function DashboardTab() {
   const { user, token } = useAuth()
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
+  // 4-5: Add error state
+  const [error, setError] = useState<string | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const isAdmin = user?.role === 'admin'
 
-  // widget order/visibility from localStorage
+  // 4-20: Server-first widget persistence with localStorage fallback
   const storageKey = `trail_widgets_${user?.id}`
   const [activeWidgets, setActiveWidgets] = useState<WidgetId[]>(() => {
     try {
@@ -80,15 +82,20 @@ export default function DashboardTab() {
   const saveWidgets = useCallback((widgets: WidgetId[]) => {
     setActiveWidgets(widgets)
     localStorage.setItem(storageKey, JSON.stringify(widgets))
-    // persist to server (best-effort)
+    // 4-20: Persist to server (primary), localStorage as fallback
     usersApi.updateSettings(user!.id, widgets).catch(() => {})
   }, [storageKey, user])
 
   const load = useCallback(async () => {
     try {
+      setError(null)
       const res = await dashboardApi.get()
       setData(res.data)
-    } catch { /* ignore */ }
+    } catch (e) {
+      // 4-5: Show error message instead of silently ignoring
+      setError('ダッシュボードデータの取得に失敗しました')
+      console.error('Dashboard load error:', e)
+    }
     setLoading(false)
   }, [])
 
@@ -96,12 +103,20 @@ export default function DashboardTab() {
 
   useWebSocket(token, useCallback((evt) => {
     const d = evt as { type: string }
-    if (['new_message', 'mention', 'note_synced', 'project_created', 'project_updated'].includes(d.type)) {
+    if (['new_message', 'mention', 'note_synced', 'project_created', 'project_updated', 'notification', 'follow_alert'].includes(d.type)) {
       load()
     }
   }, [load]))
 
   if (loading) return <div style={{ padding: '40px', color: '#888', textAlign: 'center' }}>読み込み中...</div>
+
+  // 4-5: Show error message
+  if (error) return (
+    <div style={{ padding: '40px', textAlign: 'center' }}>
+      <div style={{ color: '#c62828', fontSize: '15px', marginBottom: '12px' }}>{error}</div>
+      <button onClick={load} style={{ padding: '8px 16px', border: '1px solid #ddd', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' }}>再読み込み</button>
+    </div>
+  )
 
   return (
     <div style={s.page}>
@@ -375,7 +390,6 @@ function WidgetSettings({ allWidgets, activeWidgets, isAdmin, onSave, onClose }:
     if (!dragging.current || !dragOver.current || dragging.current === dragOver.current) return
     setOrder((prev) => {
       const next = [...prev.filter((id) => available.some((w) => w.id === id))]
-      // ensure all available widgets are in list
       for (const w of available) {
         if (!next.includes(w.id)) next.push(w.id)
       }
@@ -392,7 +406,6 @@ function WidgetSettings({ allWidgets, activeWidgets, isAdmin, onSave, onClose }:
   }
 
   const save = () => {
-    // ensure all available widgets have an order entry
     const allIds = [...new Set([...order, ...available.map((w) => w.id)])]
     onSave(allIds.filter((id) => enabled.has(id)))
   }
