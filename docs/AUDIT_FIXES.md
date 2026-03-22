@@ -383,3 +383,184 @@
 | E-5 | `frontend/src/components/tabs/DashboardTab.tsx` |
 | E-6 | `frontend/src/components/tabs/ChatTab.tsx` |
 | E-7 | `frontend/src/components/Header.tsx` |
+
+---
+
+## F. UI設計（DESIGN.md セクション7 vs React コンポーネント）
+
+### F-1 4タブ構成 — OK
+- **設計書 7.1:** メイン / チャット / プロジェクト管理 / ダッシュボード
+- **実装:** `App.tsx:15-20` — `TABS` 配列で4タブ定義、`renderTab()` で切り替え
+- **判定: 完全一致**
+
+### F-2 ヘッダーバー — ほぼ OK（2点不足）
+- **設計書 7.2:** ロゴ / 横断検索 / 通知ベル(バッジ+ドロップダウン) / クイック登録(＋) / ユーザーメニュー
+- **実装:** `Header.tsx` — 全要素実装済み
+- **検索結果のカテゴリ別グルーピング:** 実装済み（message/project/note の3グループ）
+- **通知ドロップダウンのクリック遷移:** 通知アイテムに `onClick` ハンドラなし
+- **ユーザーメニューの「プロフィール編集」「パスワード変更」:** 未実装（ログアウトのみ）
+
+| 項目 | 設計書 | 実装 | 判定 |
+|------|--------|------|------|
+| ロゴ「TRAIL」 | ✓ | `Header.tsx:80` | OK |
+| 横断検索バー | ✓ | `Header.tsx:83-116` | OK |
+| 検索結果カテゴリ別 | ✓ | `Header.tsx:98-113` | OK |
+| 通知ベル + バッジ | ✓ | `Header.tsx:120-148` | OK |
+| 通知「すべて既読」 | ✓ | `Header.tsx:129` | OK |
+| 通知クリック→遷移 | ✓ | 未実装 | **F-2a 不足** |
+| クイック登録(＋) | ✓ | `Header.tsx:151-153` | OK |
+| ユーザーメニュー表示名 | ✓ | `Header.tsx:157-159` | OK |
+| プロフィール編集 | ✓ | 未実装 | **F-2b 不足** |
+| パスワード変更 | ✓ | 未実装 | **F-2c 不足** |
+| ログアウト | ✓ | `Header.tsx:168` | OK |
+
+### F-3 メインタブの3パネル構成 — ほぼ OK（1点不足）
+
+#### Vaultエクスプローラー（左パネル）
+- **設計書 7.3:** トグル開閉(デフォルト閉) / ファイルツリー / マウスオーバープレビュー / クリック→Obsidian起動
+- **実装:** `MainTab.tsx:85,109,115-120` + `VaultExplorer.tsx`
+- **トグルボタン:** `📂 Vault` ボタンで開閉。デフォルト閉 (`useState(false)`) → OK
+- **ファイルツリー:** `VaultExplorer.tsx:57-121` — TreeNode で階層表示 → OK
+- **マウスオーバープレビュー:** `VaultExplorer.tsx:107-113` — hover 時に👁ボタン表示、**クリック**でプレビュー → **差異: 設計書は「マウスオーバー → 吹き出し」だが、実装は「ホバーでボタン表示 → クリックでフローティングウィンドウ」。マウスオーバーだけで自動プレビューにはなっていない**
+- **Obsidian起動:** `VaultExplorer.tsx:69` — `obsidian://` URI scheme → OK
+
+#### ガントチャート（中央）
+- **設計書 7.3:** パネル開閉に応じて幅自動調整 / チャットボタン
+- **実装:** `MainTab.tsx:143-150` — flex:1 で自動調整 → OK
+- **💬チャットボタン:** 未実装。設計書では「ガント上の💬ボタンクリック → チャットパネル表示」だが、GanttChart コンポーネントにチャットボタンなし → **F-3a 不足**
+
+#### チャットパネル（右パネル）
+- **設計書 7.3:** トグルボタンまたはガント💬で開閉 / プロジェクトスレッド表示 / ×で閉じる
+- **実装:** `MainTab.tsx:154-156` — `ChatPanel` コンポーネント
+- **トグルボタン（💬アイコン）:** 未実装。`chatChannel` は state として存在するが、セットする UI がない（ガントの💬ボタンもなし）→ **F-3b 不足: チャットパネルを開く手段がない**
+
+### F-4 チャットタブ — ほぼ OK（1点不足）
+
+| 項目 | 設計書 | 実装 | 判定 |
+|------|--------|------|------|
+| スレッド一覧（左） | ✓ | `ChatTab.tsx:91-141` | OK |
+| 並び替え(4種) | ✓ | `ChatTab.tsx:93-102` | OK |
+| フィルタ(★BM) | ✓ | `ChatTab.tsx:103-108` | OK — ただし「未読ありのみ」フィルタは未実装 |
+| 各スレッド: 名前/プレビュー/時刻/未読マーク | ✓ | `ChatTab.tsx:111-139` | OK |
+| ★ブックマークON/OFF | ✓ | `ChatTab.tsx:121-125` | OK |
+| メッセージ一覧（右） | ✓ | `ChatTab.tsx:150-202` | OK |
+| タグ(報告/連絡/相談) | ✓ | `ChatTab.tsx:154-158` | OK |
+| リアクション表示+追加 | ✓ | `ChatTab.tsx:175-199` | OK |
+| Obsidianリンク → プレビュー | ✓ | `ChatTab.tsx:163-174` + ObsidianPreview | OK |
+| @メンション入力UI | ✓ | 未実装 | **F-4a 不足** |
+
+**F-4a【中】@メンション入力 UI が未実装**
+- **設計書 7.4:** メッセージ投稿時に@メンションが可能
+- **実装:** `MessageCreate` スキーマに `mentions: list[str]` フィールドはあるが、フロントエンドにメンション選択UIなし。テキスト入力のみで、mentions 配列は常に空で送信される
+
+### F-5 プロジェクト管理タブ — OK
+
+| 項目 | 設計書 7.5 | 実装 | 判定 |
+|------|--------|------|------|
+| カード形式一覧 | ✓ | `ProjectsTab.tsx:68-77` + `ProjectCard` | OK |
+| 表示切替(Active/Archived/All) | ✓ | `ProjectsTab.tsx:46-51` | OK |
+| フィルタ(担当者/タグ) | ✓ | `ProjectsTab.tsx:53-60` | OK |
+| 各カード: ID/名前/担当/期間/State/Feeling/タグ | ✓ | `ProjectCard` | OK |
+| Box/Obsidianリンク | ✓ | `ProjectCard:152-154` | OK |
+| [編集] → モーダル | ✓ | `ProjectFormModal` | OK |
+| [子タスク管理] → モーダル | ✓ | `TaskManagementModal` | OK |
+| [クローズ] → モーダル | ✓ | `CloseModal` | OK |
+| [＋新規登録] → 全項目フォーム | ✓ | `ProjectFormModal` (isEdit=false) | OK |
+
+### F-6 ダッシュボード — ほぼ OK（1点差異）
+
+| 項目 | 設計書 7.6 | 実装 | 判定 |
+|------|--------|------|------|
+| 未読メッセージウィジェット | ✓ | `UnreadWidget` | OK |
+| 要確認アラートウィジェット | ✓ | `AlertsWidget` | OK |
+| 今週のマイルストーンウィジェット | ✓ | `MilestonesWidget` | OK |
+| 自分の業務一覧ウィジェット | ✓ | `MyProjectsWidget` | OK |
+| ガント俯瞰ウィジェット | ✓ | `MiniGanttWidget` | OK |
+| 最近更新されたnoteウィジェット | ✓ | `RecentNotesWidget` | OK |
+| ⚙ ウィジェット設定ボタン | ✓ | `DashboardTab.tsx:110` | OK |
+| ON/OFF切替 | ✓ | `WidgetSettings:429-430` チェックボックス | OK |
+| ドラッグ並び替え | ✓ | `WidgetSettings:418-421` drag イベント | OK |
+| 設定をuser_settingsに保存 | ✓ | `DashboardTab.tsx:84` `usersApi.updateSettings` | OK |
+| デフォルト: 管理者ON / メンバーOFF | 設計書: follow_alerts, mini_gantt が管理者デフォルト | `ALL_WIDGETS:26` `adminOnly: false` | **F-6a 差異** |
+
+**F-6a【低】follow_alerts（要確認アラート）のデフォルト表示が設計書と不一致**
+- **設計書:** 「管理者ON / メンバーOFF」
+- **実装:** `ALL_WIDGETS` で `adminOnly: false`（全員ON）
+- **修正:** `adminOnly: true` に変更（mini_gantt と同様）
+
+### F-7 GanttPopover 親/子タスク切り替え — OK
+
+| 項目 | 設計書 6.8 | 実装 | 判定 |
+|------|--------|------|------|
+| 親タスク吹き出し: noteリスト + コメント | ✓ | `ParentPopover` | OK |
+| 子タスク吹き出し: 進捗度スライダー(6段階スナップ) | ✓ | `ChildPopover` | OK |
+| 親: noteの🔗クリック→Obsidian起動 | ✓ | `ParentPopover:50` | OK |
+| 親: コメント追加/編集 | ✓ | `ParentPopover:54-65` | OK |
+| 子: スライダー+ボタン(0/20/40/60/80/100) | ✓ | `ChildPopover:111-130` | OK |
+| 親/子の自動切り替え | ✓ | `GanttChart.tsx:239-256` type による分岐 | OK |
+
+**補足:** 設計書では「マウスオーバーで表示」だが、実装は「クリックで表示」（`handleCellClick`）。UX判断として許容可能だが、設計書の厳密な意図とは差異あり。
+
+### F-8 ObsidianPreviewウィンドウ — OK
+
+| 項目 | 設計書 7.4/8.7 | 実装 | 判定 |
+|------|--------|------|------|
+| フローティングウィンドウ | ✓ | `ObsidianPreview.tsx` position:fixed | OK |
+| ドラッグ移動 | ✓ | `startDrag` ハンドラ | OK |
+| リサイズ可能 | ✓ | CSS `resize: 'both'` | OK |
+| Markdown→HTML表示 | ✓ | iframe + srcDoc | OK |
+| スクロール閲覧 | ✓ | overflowY: auto | OK |
+| 🔗ボタン→Obsidian起動 | ✓ | `ObsidianPreview.tsx:57` | OK |
+| ×閉じるボタン | ✓ | `ObsidianPreview.tsx:58` | OK |
+
+### F-9 週次サマリー — ほぼ OK（1点不足）
+- **設計書 6.9:** 業務展開時にガント下部に表示 / 週タブ / 手動入力 / LLM生成ボタン / noteリンク
+- **実装:** `GanttChart.tsx:192-194` — `WeeklySummaryRow`
+- **週タブ切り替え:** OK (`WeeklySummaryRow:396-406`)
+- **手動入力(✏ 編集):** OK (`WeeklySummaryRow:439`)
+- **noteリンク表示:** OK (`WeeklySummaryRow:426-437`)
+- **🤖 LLM生成ボタン:** 未実装 → **F-9a 不足**（B-3のAPI未実装と対応）
+
+### F-10 ガントエクスポート機能 — 未実装
+- **設計書 6.13:** ヘッダーの表示切替エリアに「エクスポート」ボタン → PNG/PDF出力
+- **実装:** MainTab のツールバーにエクスポートボタンなし
+- **判定:** **F-10 未実装**（Phase 3の後半機能として優先度は低い）
+
+---
+
+## F. 問題サマリー
+
+### 要対応
+
+| # | 問題 | 重要度 |
+|---|------|--------|
+| F-2a | 通知クリック→該当箇所への遷移が未実装 | **中** |
+| F-2b | ユーザーメニュー「プロフィール編集」が未実装 | **低** |
+| F-2c | ユーザーメニュー「パスワード変更」が未実装 | **低** |
+| F-3a | ガントチャート上の💬チャットボタンが未実装 | **高** |
+| F-3b | メインタブのチャットパネルを開く手段がない（💬トグルボタンなし） | **高** |
+| F-4a | @メンション入力UIが未実装（API側は対応済み） | **中** |
+| F-6a | follow_alerts の adminOnly が false（設計書は管理者のみデフォルトON） | **低** |
+| F-9a | 週次サマリーの🤖 LLM生成ボタンが未実装 | **低** |
+| F-10 | ガントエクスポート機能（PNG/PDF）が未実装 | **低** |
+
+### 設計書との軽微な差異（UX判断として許容可能）
+
+| 項目 | 設計書 | 実装 | 備考 |
+|------|--------|------|------|
+| GanttPopover 表示方法 | マウスオーバー | クリック | クリックの方が誤表示が少なく実用的 |
+| VaultExplorer プレビュー | マウスオーバーで吹き出し | ホバーでボタン表示→クリックでウィンドウ | 同上 |
+
+---
+
+## 修正時の参照ファイル一覧（F項）
+
+| 修正ID | 対象ファイル |
+|--------|-------------|
+| F-2a | `frontend/src/components/Header.tsx` |
+| F-2b, F-2c | `frontend/src/components/Header.tsx`, 新規 ProfileModal コンポーネント |
+| F-3a, F-3b | `frontend/src/components/GanttChart.tsx`, `frontend/src/components/tabs/MainTab.tsx` |
+| F-4a | `frontend/src/components/tabs/ChatTab.tsx` |
+| F-6a | `frontend/src/components/tabs/DashboardTab.tsx:25` |
+| F-9a | `frontend/src/components/GanttChart.tsx` (WeeklySummaryRow) |
+| F-10 | `frontend/src/components/tabs/MainTab.tsx`, 新規エクスポートロジック |
