@@ -10,7 +10,7 @@ from database import init_db, get_db
 from auth import get_password_hash, ALGORITHM
 from websocket import manager
 from routers import auth, users, channels, messages, notifications
-from routers import projects, tasks, milestones, gantt, daily_logs, vault, search
+from routers import projects, tasks, milestones, gantt, daily_logs, vault, search, dashboard
 import aiosqlite
 
 
@@ -66,6 +66,7 @@ app.include_router(gantt.router)
 app.include_router(daily_logs.router)
 app.include_router(vault.router)
 app.include_router(search.router)
+app.include_router(dashboard.router)
 
 
 @app.get("/api/health")

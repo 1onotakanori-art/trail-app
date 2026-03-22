@@ -132,3 +132,8 @@ export const vaultApi = {
 export const searchApi = {
   search: (q: string) => api.get('/search', { params: { q } }),
 }
+
+export const dashboardApi = {
+  get: () => api.get('/dashboard'),
+  alerts: () => api.get('/dashboard/alerts'),
+}
