@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { FolderOpen, SidebarOpen, MessageSquare, Plus } from 'lucide-react'
 import { GanttProject, User, Channel } from '../../types'
 import { ganttApi, usersApi, messagesApi, channelsApi } from '../../api/client'
 import { useAuth } from '../../contexts/AuthContext'
@@ -142,9 +143,9 @@ export default function MainTab() {
         <div style={{ padding: '8px 12px', background: '#fff', borderBottom: '1px solid #e0e0e0', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button
             onClick={() => setShowVault(!showVault)}
-            style={{ padding: '5px 10px', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', background: showVault ? '#e3f2fd' : '#fff' }}
+            style={{ padding: '5px 10px', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', background: showVault ? '#e3f2fd' : '#fff', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
           >
-            📂 Vault
+            <FolderOpen size={14} /> Vault
           </button>
           <div style={{ display: 'flex', background: '#f5f5f5', borderRadius: '6px', padding: '2px' }}>
             {(['all', 'personal', 'tag'] as ViewMode[]).map((m) => (
@@ -169,19 +170,19 @@ export default function MainTab() {
               alert('ガントチャートをエクスポート中... (html2canvas + jsPDF が必要です)')
             }
           }}
-            style={{ padding: '5px 10px', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', background: '#fff' }}>
-            📥 エクスポート
+            style={{ padding: '5px 10px', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', background: '#fff', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+            <SidebarOpen size={14} /> エクスポート
           </button>
           {/* 4-9: Chat panel toggle button */}
           <button
             onClick={() => setShowChat(!showChat)}
-            style={{ padding: '5px 10px', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', background: showChat ? '#e3f2fd' : '#fff' }}
+            style={{ padding: '5px 10px', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', background: showChat ? '#e3f2fd' : '#fff', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
           >
-            💬 チャット
+            <MessageSquare size={14} /> チャット
           </button>
           <button onClick={() => setShowQuickAdd(true)}
-            style={{ marginLeft: 'auto', padding: '5px 14px', background: '#1a237e', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px' }}>
-            ＋ 新規業務
+            style={{ marginLeft: 'auto', padding: '5px 14px', background: '#1a237e', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+            <Plus size={14} /> 新規業務
           </button>
         </div>
 

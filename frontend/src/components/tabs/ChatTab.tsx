@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
+import { ThumbsUp, Eye, CheckSquare, HelpCircle, Lightbulb, FileText, Link, Star } from 'lucide-react'
 import { Channel, Message, User } from '../../types'
 import { channelsApi, messagesApi, usersApi, vaultApi } from '../../api/client'
 import { useAuth } from '../../contexts/AuthContext'
@@ -12,7 +13,13 @@ const TAG_COLORS: Record<string, string> = {
   '相談': '#e65100',
 }
 
-const REACTIONS = ['👍', '👀', '✅', '❓', '💡']
+const REACTIONS: { emoji: string; icon: React.ReactNode }[] = [
+  { emoji: '👍', icon: <ThumbsUp size={14} /> },
+  { emoji: '👀', icon: <Eye size={14} /> },
+  { emoji: '✅', icon: <CheckSquare size={14} /> },
+  { emoji: '❓', icon: <HelpCircle size={14} /> },
+  { emoji: '💡', icon: <Lightbulb size={14} /> },
+]
 
 // 4-12: Highlight @mentions in message content
 function renderMessageContent(content: string) {
@@ -196,8 +203,7 @@ export default function ChatTab() {
   }
 
   const insertObsidianLink = (file: { path: string; name: string }) => {
-    const uri = `obsidian://open?file=${encodeURIComponent(file.path)}`
-    setInput((prev) => prev + ` 📄${file.name}`)
+    setInput((prev) => prev + ` ${file.name}`)
     setShowVaultPicker(false)
     // Store link info - will be sent with message
     inputRef.current?.focus()
@@ -229,7 +235,7 @@ export default function ChatTab() {
             style={{ ...styles.filterBtn, background: filterBookmarked ? '#e3f2fd' : undefined }}
             onClick={() => setFilterBookmarked(!filterBookmarked)}
           >
-            ★BM
+            <Star size={12} />BM
           </button>
         </div>
         <div style={styles.channelList}>
@@ -247,7 +253,7 @@ export default function ChatTab() {
                   style={{ ...styles.bookmarkBtn, color: ch.bookmarked ? '#f9a825' : '#ccc' }}
                   onClick={(e) => toggleBookmark(ch, e)}
                 >
-                  ★
+                  <Star size={14} />
                 </button>
                 <span style={styles.channelName}>{ch.name}</span>
                 {ch.unread_count > 0 && (
@@ -287,14 +293,14 @@ export default function ChatTab() {
                   <div style={styles.messageContent}>{renderMessageContent(msg.content)}</div>
                   {msg.obsidian_links?.map((link, i) => (
                     <div key={i} style={styles.obsidianLink}>
-                      <span>📄 {link.label || link.path.split('/').pop()}</span>
+                      <span><FileText size={13} style={{ verticalAlign: 'middle', marginRight: '4px' }} />{link.label || link.path.split('/').pop()}</span>
                       <button
                         style={styles.previewBtn}
                         onClick={() => setPreviewPath(link.path)}
                       >
                         プレビュー
                       </button>
-                      <a href={link.uri} style={styles.openBtn}>🔗</a>
+                      <a href={link.uri} style={styles.openBtn}><Link size={14} /></a>
                     </div>
                   ))}
                   <div style={styles.reactionBar}>
@@ -311,13 +317,13 @@ export default function ChatTab() {
                       </button>
                     ))}
                     <div style={styles.reactionPicker}>
-                      {REACTIONS.map((e) => (
+                      {REACTIONS.map((r) => (
                         <button
-                          key={e}
+                          key={r.emoji}
                           style={styles.emojiBtn}
-                          onClick={() => toggleReaction(msg, e)}
+                          onClick={() => toggleReaction(msg, r.emoji)}
                         >
-                          {e}
+                          {r.icon}
                         </button>
                       ))}
                     </div>
@@ -338,7 +344,7 @@ export default function ChatTab() {
                 <option value="相談">相談</option>
               </select>
               {/* 4-13: Obsidian link insertion button */}
-              <button style={styles.obsidianBtn} onClick={openVaultPicker} title="Obsidianリンク挿入">📄</button>
+              <button style={styles.obsidianBtn} onClick={openVaultPicker} title="Obsidianリンク挿入"><FileText size={14} /></button>
               <div style={{ position: 'relative', flex: 1 }}>
                 <input
                   ref={inputRef}
@@ -384,7 +390,7 @@ export default function ChatTab() {
               {vaultFiles.length === 0 && <div style={{ padding: '16px', color: '#888' }}>ファイルが見つかりません</div>}
               {vaultFiles.map((f) => (
                 <div key={f.path} style={styles.pickerItem} onClick={() => insertObsidianLink(f)}>
-                  📄 {f.name} <span style={{ color: '#aaa', fontSize: '11px', marginLeft: '4px' }}>{f.path}</span>
+                  <FileText size={13} style={{ verticalAlign: 'middle', marginRight: '4px' }} />{f.name} <span style={{ color: '#aaa', fontSize: '11px', marginLeft: '4px' }}>{f.path}</span>
                 </div>
               ))}
             </div>

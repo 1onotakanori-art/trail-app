@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
+import { ClipboardList, AlertTriangle, Calendar, BarChart2, TrendingUp, FileEdit, MessageSquare, Megaphone, Folder, FileText, Link, GripVertical, Settings, Diamond } from 'lucide-react'
+import { StateIcon, FeelingIcon } from '../Icons'
 import { dashboardApi, usersApi } from '../../api/client'
 import { useAuth } from '../../contexts/AuthContext'
 import { useWebSocket } from '../../hooks/useWebSocket'
@@ -16,17 +18,17 @@ type WidgetId =
 interface WidgetDef {
   id: WidgetId
   label: string
-  icon: string
+  icon: React.ReactNode
   adminOnly: boolean
 }
 
 const ALL_WIDGETS: WidgetDef[] = [
-  { id: 'unread_messages',  label: '未読メッセージ',          icon: '📋', adminOnly: false },
-  { id: 'follow_alerts',    label: '要確認アラート',           icon: '⚠',  adminOnly: true },   // 4-14: adminOnly = true
-  { id: 'week_milestones',  label: '今週のマイルストーン',     icon: '📅', adminOnly: false },
-  { id: 'my_projects',      label: '自分の業務一覧',           icon: '📊', adminOnly: false },
-  { id: 'mini_gantt',       label: 'ガント俯瞰（ミニ版）',     icon: '📈', adminOnly: true  },
-  { id: 'recent_notes',     label: '最近更新されたnote',       icon: '📝', adminOnly: false },
+  { id: 'unread_messages',  label: '未読メッセージ',          icon: <ClipboardList size={16} />, adminOnly: false },
+  { id: 'follow_alerts',    label: '要確認アラート',           icon: <AlertTriangle size={16} />,  adminOnly: true },   // 4-14: adminOnly = true
+  { id: 'week_milestones',  label: '今週のマイルストーン',     icon: <Calendar size={16} />, adminOnly: false },
+  { id: 'my_projects',      label: '自分の業務一覧',           icon: <BarChart2 size={16} />, adminOnly: false },
+  { id: 'mini_gantt',       label: 'ガント俯瞰（ミニ版）',     icon: <TrendingUp size={16} />, adminOnly: true  },
+  { id: 'recent_notes',     label: '最近更新されたnote',       icon: <FileEdit size={16} />, adminOnly: false },
 ]
 
 interface DashboardData {
@@ -122,7 +124,10 @@ export default function DashboardTab() {
     <div style={s.page}>
       <div style={s.topBar}>
         <h2 style={s.pageTitle}>ダッシュボード</h2>
-        <button style={s.settingsBtn} onClick={() => setShowSettings(true)}>⚙ ウィジェット設定</button>
+        <button style={s.settingsBtn} onClick={() => setShowSettings(true)}>
+          <Settings size={13} style={{ verticalAlign: 'middle', marginRight: '4px' }} />
+          ウィジェット設定
+        </button>
       </div>
 
       <div style={s.grid}>
@@ -174,10 +179,17 @@ function WidgetShell({ wid, data, isAdmin }: { wid: WidgetId; data: DashboardDat
 
 // ── Widget: Unread messages ─────────────────────────────────────────────
 
-function UnreadWidget({ data }: { data: DashboardData }) {
-  const TYPE_ICONS: Record<string, string> = {
-    mention: '💬', message: '📢', follow_alert: '⚠', project_created: '📁',
+function DashNotifTypeIcon({ type }: { type: string }) {
+  switch(type) {
+    case 'mention': return <MessageSquare size={16} />
+    case 'message': return <Megaphone size={16} />
+    case 'follow_alert': return <AlertTriangle size={16} />
+    case 'project_created': return <Folder size={16} />
+    default: return <Megaphone size={16} />
   }
+}
+
+function UnreadWidget({ data }: { data: DashboardData }) {
   if (data.unread_notifications.length === 0) {
     return <Empty text="未読通知なし" />
   }
@@ -185,7 +197,7 @@ function UnreadWidget({ data }: { data: DashboardData }) {
     <div style={s.list}>
       {data.unread_notifications.map((n) => (
         <div key={n.id} style={s.listItem}>
-          <span style={s.listIcon}>{TYPE_ICONS[n.type] || '📢'}</span>
+          <span style={s.listIcon}><DashNotifTypeIcon type={n.type} /></span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={s.listTitle}>{n.title}</div>
             <div style={s.listSub}>{n.body}</div>
@@ -203,13 +215,13 @@ function AlertsWidget({ data }: { data: DashboardData; isAdmin?: boolean }) {
   const stale = data.stale_projects
   const feeling = data.feeling_alerts
 
-  if (stale.length === 0 && feeling.length === 0) return <Empty text="要確認アラートなし ✓" />
+  if (stale.length === 0 && feeling.length === 0) return <Empty text="要確認アラートなし" />
 
   return (
     <div style={s.list}>
       {stale.map((p) => (
         <div key={`stale-${p.id}`} style={{ ...s.listItem, borderLeft: '3px solid #ff7043' }}>
-          <span style={s.listIcon}>📁</span>
+          <span style={s.listIcon}><Folder size={16} /></span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={s.listTitle}>{p.name}</div>
             <div style={s.listSub}>
@@ -223,7 +235,9 @@ function AlertsWidget({ data }: { data: DashboardData; isAdmin?: boolean }) {
       ))}
       {feeling.map((p) => (
         <div key={`feeling-${p.id}`} style={{ ...s.listItem, borderLeft: '3px solid #7b1fa2' }}>
-          <span style={s.listIcon}>{p.feeling === '相談したい' ? '💬' : '⚠'}</span>
+          <span style={s.listIcon}>
+            {p.feeling === '相談したい' ? <MessageSquare size={16} /> : <AlertTriangle size={16} />}
+          </span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={s.listTitle}>{p.name}</div>
             <div style={s.listSub}>{p.owner_name}</div>
@@ -245,7 +259,7 @@ function MilestonesWidget({ data }: { data: DashboardData }) {
     <div style={s.list}>
       {data.week_milestones.map((m) => (
         <div key={m.id} style={{ ...s.listItem, ...(m.date === today ? { background: '#fff9c4' } : {}) }}>
-          <span style={{ ...s.listIcon, color: '#f57f17' }}>◆</span>
+          <span style={{ ...s.listIcon, color: '#f57f17' }}><Diamond size={14} /></span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={s.listTitle}>{m.title}</div>
             <div style={s.listSub}>{m.project_name}</div>
@@ -261,8 +275,6 @@ function MilestonesWidget({ data }: { data: DashboardData }) {
 
 // ── Widget: My projects ─────────────────────────────────────────────────
 
-const STATE_ICONS: Record<string, string> = { '進行中': '🔵', '待機中': '⚪', '完了': '🟢' }
-const FEELING_ICONS: Record<string, string> = { '順調': '✓', 'やや不安': '△', '遅延しそう': '⚠', '相談したい': '💬' }
 const FEELING_COLORS: Record<string, string> = { '順調': '#2e7d32', 'やや不安': '#f57f17', '遅延しそう': '#c62828', '相談したい': '#6a1b9a' }
 
 function MyProjectsWidget({ data }: { data: DashboardData }) {
@@ -275,9 +287,9 @@ function MyProjectsWidget({ data }: { data: DashboardData }) {
             <span style={s.listTitle}>{p.name}</span>
           </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
-            <span style={{ fontSize: '14px' }}>{STATE_ICONS[p.state]}</span>
-            <span style={{ fontSize: '13px', fontWeight: 600, color: FEELING_COLORS[p.feeling] || '#333' }}>
-              {FEELING_ICONS[p.feeling]}
+            <StateIcon state={p.state} size={14} />
+            <span style={{ display: 'inline-flex', alignItems: 'center', fontSize: '13px', fontWeight: 600, color: FEELING_COLORS[p.feeling] || '#333' }}>
+              <FeelingIcon feeling={p.feeling} size={13} />
             </span>
           </div>
         </div>
@@ -312,7 +324,9 @@ function MiniGanttWidget({ data }: { data: DashboardData }) {
             return (
               <tr key={p.id} style={{ borderBottom: '1px solid #f0f0f0' }}>
                 <td style={{ padding: '4px 8px', whiteSpace: 'nowrap', width: '35%', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  <span title={p.name}>{STATE_ICONS[p.state]} {p.name}</span>
+                  <span title={p.name} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    <StateIcon state={p.state} size={12} /> {p.name}
+                  </span>
                 </td>
                 <td style={{ padding: '4px 4px', position: 'relative', height: '20px' }}>
                   <div style={{ position: 'relative', height: '12px', background: '#f0f0f0', borderRadius: '6px', overflow: 'hidden' }}>
@@ -342,7 +356,7 @@ function RecentNotesWidget({ data }: { data: DashboardData }) {
     <div style={s.list}>
       {data.recent_notes.map((n) => (
         <div key={n.id} style={s.listItem}>
-          <span style={s.listIcon}>📄</span>
+          <span style={s.listIcon}><FileText size={16} /></span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={s.listTitle}>{n.obsidian_note_path.split('/').pop()}</div>
             <div style={s.listSub}>{n.project_name}</div>
@@ -350,7 +364,9 @@ function RecentNotesWidget({ data }: { data: DashboardData }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
             <span style={s.listTime}>{n.date}</span>
             {n.obsidian_uri && (
-              <a href={n.obsidian_uri} style={{ fontSize: '14px', textDecoration: 'none' }} title="Obsidianで開く">🔗</a>
+              <a href={n.obsidian_uri} style={{ display: 'inline-flex', alignItems: 'center', textDecoration: 'none', color: '#1565c0' }} title="Obsidianで開く">
+                <Link size={14} />
+              </a>
             )}
           </div>
         </div>
@@ -435,8 +451,8 @@ function WidgetSettings({ allWidgets, activeWidgets, isAdmin, onSave, onClose }:
                 onDragOver={(e) => e.preventDefault()}
                 style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', marginBottom: '6px', background: '#f9f9f9', borderRadius: '6px', cursor: 'grab', border: '1px solid #e8e8e8', userSelect: 'none' }}
               >
-                <span style={{ color: '#bbb', fontSize: '16px', cursor: 'grab' }}>⠿</span>
-                <span style={{ fontSize: '16px' }}>{def.icon}</span>
+                <span style={{ color: '#bbb', fontSize: '16px', cursor: 'grab', display: 'inline-flex', alignItems: 'center' }}><GripVertical size={16} /></span>
+                <span style={{ fontSize: '16px', display: 'inline-flex', alignItems: 'center' }}>{def.icon}</span>
                 <span style={{ flex: 1, fontSize: '14px' }}>{def.label}</span>
                 {def.adminOnly && <span style={{ fontSize: '11px', color: '#7b1fa2', background: '#f3e5f5', padding: '1px 6px', borderRadius: '8px' }}>管理者</span>}
                 <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
@@ -485,16 +501,16 @@ const s: Record<string, React.CSSProperties> = {
   page: { padding: '16px 20px', height: 'calc(100vh - 92px)', overflowY: 'auto', background: '#f5f5f5' },
   topBar: { display: 'flex', alignItems: 'center', marginBottom: '16px' },
   pageTitle: { margin: 0, fontSize: '20px', fontWeight: 700, color: '#1a237e', flex: 1 },
-  settingsBtn: { padding: '6px 14px', border: '1px solid #ddd', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', background: '#fff' },
+  settingsBtn: { padding: '6px 14px', border: '1px solid #ddd', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', background: '#fff', display: 'inline-flex', alignItems: 'center' },
   grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '16px' },
   widget: { background: '#fff', borderRadius: '10px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', overflow: 'hidden' },
   widgetHeader: { padding: '12px 16px', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', gap: '8px', background: '#fafafa' },
-  widgetIcon: { fontSize: '16px' },
+  widgetIcon: { fontSize: '16px', display: 'inline-flex', alignItems: 'center' },
   widgetTitle: { fontSize: '14px', fontWeight: 700, color: '#333' },
   widgetBody: { padding: '0' },
   list: { display: 'flex', flexDirection: 'column' },
   listItem: { display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 16px', borderBottom: '1px solid #f5f5f5', minWidth: 0 },
-  listIcon: { fontSize: '16px', flexShrink: 0 },
+  listIcon: { fontSize: '16px', flexShrink: 0, display: 'inline-flex', alignItems: 'center' },
   listTitle: { fontSize: '13px', fontWeight: 500, color: '#333', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   listSub: { fontSize: '12px', color: '#888', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   listTime: { fontSize: '11px', color: '#bbb', flexShrink: 0 },

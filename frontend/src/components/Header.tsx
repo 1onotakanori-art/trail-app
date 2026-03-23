@@ -3,11 +3,37 @@ import { useAuth } from '../contexts/AuthContext'
 import { notificationsApi, searchApi, usersApi, settingsApi } from '../api/client'
 import { Notification } from '../types'
 import { useWebSocket } from '../hooks/useWebSocket'
+import {
+  Search, Bell, User, Plus, MessageSquare, Megaphone, AlertTriangle,
+  Folder, Bot, X, ChevronDown, CheckSquare, FileText, FileEdit, BarChart2, Check, CircleX,
+} from 'lucide-react'
 
 interface Props {
   onSearch?: (query: string) => void
   onQuickAdd?: () => void
   onNavigate?: (type: string, id: string) => void  // 4-10: Navigation callback
+}
+
+function NotifTypeIcon({ type }: { type: string }) {
+  switch(type) {
+    case 'mention': return <MessageSquare size={16} />
+    case 'message': return <Megaphone size={16} />
+    case 'follow_alert': return <AlertTriangle size={16} />
+    case 'project_created': return <Folder size={16} />
+    default: return <Bell size={16} />
+  }
+}
+
+function SearchTypeLabel({ type }: { type: string }) {
+  switch(type) {
+    case 'message': return <><MessageSquare size={12} /> チャット</>
+    case 'project': return <><Folder size={12} /> プロジェクト</>
+    case 'task': return <><CheckSquare size={12} /> タスク</>
+    case 'note': return <><FileText size={12} /> note</>
+    case 'daily_log': return <><FileEdit size={12} /> 日次ログ</>
+    case 'weekly_summary': return <><BarChart2 size={12} /> 週次サマリー</>
+    default: return <>{type}</>
+  }
 }
 
 export default function Header({ onSearch, onQuickAdd, onNavigate }: Props) {
@@ -71,10 +97,6 @@ export default function Header({ onSearch, onQuickAdd, onNavigate }: Props) {
     } catch (err) { console.error('Search failed:', err) } // 4-7: console.error
   }, [onSearch])
 
-  const TYPE_ICONS: Record<string, string> = {
-    mention: '💬', message: '📢', follow_alert: '⚠', project_created: '📁',
-  }
-
   const formatTime = (dt: string) => {
     const d = new Date(dt)
     return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
@@ -87,7 +109,7 @@ export default function Header({ onSearch, onQuickAdd, onNavigate }: Props) {
       {/* Search */}
       <div style={styles.searchWrapper}>
         <div style={styles.search}>
-          <span style={styles.searchIcon}>🔍</span>
+          <span style={styles.searchIcon}><Search size={14} /></span>
           <input
             type="text"
             placeholder="横断検索..."
@@ -103,17 +125,11 @@ export default function Header({ onSearch, onQuickAdd, onNavigate }: Props) {
             {['message', 'project', 'task', 'note', 'daily_log', 'weekly_summary'].map((type) => {
               const items = searchResults.filter((r) => r.type === type)
               if (!items.length) return null
-              const labels: Record<string, string> = {
-                message: '💬 チャット',
-                project: '📁 プロジェクト',
-                task: '✅ タスク',
-                note: '📄 note',
-                daily_log: '📝 日次ログ',
-                weekly_summary: '📊 週次サマリー',
-              }
               return (
                 <div key={type}>
-                  <div style={styles.searchGroup}>{labels[type] || type}</div>
+                  <div style={{ ...styles.searchGroup, display: 'inline-flex', alignItems: 'center', gap: '4px', width: '100%' }}>
+                    <SearchTypeLabel type={type} />
+                  </div>
                   {items.map((r) => (
                     <div
                       key={r.id}
@@ -142,7 +158,7 @@ export default function Header({ onSearch, onQuickAdd, onNavigate }: Props) {
         {/* Notification bell */}
         <div style={{ position: 'relative' }}>
           <button style={styles.iconButton} onClick={openNotifications} title="通知">
-            🔔
+            <Bell size={16} />
             {unreadCount > 0 && <span style={styles.badge}>{unreadCount}</span>}
           </button>
           {showNotifications && (
@@ -169,7 +185,7 @@ export default function Header({ onSearch, onQuickAdd, onNavigate }: Props) {
                           }
                         }}
                       >
-                        <span style={{ fontSize: '16px' }}>{TYPE_ICONS[n.type] || '📢'}</span>
+                        <span style={{ fontSize: '16px', display: 'inline-flex', alignItems: 'center' }}><NotifTypeIcon type={n.type} /></span>
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: '13px', fontWeight: n.read ? 400 : 600 }}>{n.title}</div>
                           <div style={{ fontSize: '12px', color: '#666' }}>{n.body}</div>
@@ -185,14 +201,14 @@ export default function Header({ onSearch, onQuickAdd, onNavigate }: Props) {
 
         {/* Quick add */}
         <button style={styles.iconButton} onClick={onQuickAdd} title="新規業務登録">
-          ＋
+          <Plus size={16} />
         </button>
 
         {/* User menu */}
         <div style={{ position: 'relative' }}>
           <button style={styles.userButton} onClick={() => setShowUserMenu(!showUserMenu)}>
-            👤 {user?.display_name}
-            <span style={{ fontSize: '10px', opacity: 0.8 }}>▾</span>
+            <User size={14} /> {user?.display_name}
+            <ChevronDown size={12} style={{ opacity: 0.8 }} />
           </button>
           {showUserMenu && (
             <div style={styles.dropdown}>
@@ -211,7 +227,7 @@ export default function Header({ onSearch, onQuickAdd, onNavigate }: Props) {
               </button>
               {user?.role === 'admin' && (
                 <button style={styles.dropdownButton} onClick={() => { setShowLlmSettings(true); setShowUserMenu(false) }}>
-                  🤖 LLM設定
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}><Bot size={14} /> LLM設定</span>
                 </button>
               )}
               <hr style={{ margin: 0, border: 'none', borderTop: '1px solid #eee' }} />
@@ -263,7 +279,7 @@ function ProfileModal({ userId, currentName, onClose }: { userId: string; curren
       <div style={modalStyles.box}>
         <div style={modalStyles.header}>
           <strong>プロフィール編集</strong>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer' }}>×</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}><X size={18} /></button>
         </div>
         <form onSubmit={submit} style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div>
@@ -316,7 +332,7 @@ function PasswordModal({ userId, onClose }: { userId: string; onClose: () => voi
       <div style={modalStyles.box}>
         <div style={modalStyles.header}>
           <strong>パスワード変更</strong>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer' }}>×</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}><X size={18} /></button>
         </div>
         <form onSubmit={submit} style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div>
@@ -393,8 +409,8 @@ function LlmSettingsModal({ onClose }: { onClose: () => void }) {
     <div style={modalStyles.overlay} onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
       <div style={{ ...modalStyles.box, width: '480px' }}>
         <div style={modalStyles.header}>
-          <strong>🤖 LLM設定（LM Studio）</strong>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer' }}>×</button>
+          <strong style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}><Bot size={16} /> LLM設定（LM Studio）</strong>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}><X size={18} /></button>
         </div>
         <form onSubmit={save} style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div>
@@ -437,8 +453,8 @@ function LlmSettingsModal({ onClose }: { onClose: () => void }) {
               {checking ? '確認中...' : '接続確認'}
             </button>
             {status && (
-              <span style={{ fontSize: '13px', color: status.connected ? '#2e7d32' : '#c62828' }}>
-                {status.connected ? '✓ 接続OK' : '✗ 未接続'}
+              <span style={{ fontSize: '13px', color: status.connected ? '#2e7d32' : '#c62828', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                {status.connected ? <><Check size={13} /> 接続OK</> : <><CircleX size={13} /> 未接続</>}
               </span>
             )}
           </div>
@@ -470,7 +486,7 @@ const styles: Record<string, React.CSSProperties> = {
   logo: { fontSize: '18px', fontWeight: 700, letterSpacing: '3px', minWidth: '80px' },
   searchWrapper: { flex: 1, position: 'relative', maxWidth: '480px' },
   search: { display: 'flex', alignItems: 'center', background: 'rgba(255,255,255,0.15)', borderRadius: '6px', padding: '0 10px' },
-  searchIcon: { fontSize: '14px', marginRight: '8px', opacity: 0.8 },
+  searchIcon: { display: 'inline-flex', alignItems: 'center', marginRight: '8px', opacity: 0.8 },
   searchInput: { flex: 1, background: 'none', border: 'none', outline: 'none', color: '#fff', fontSize: '14px', padding: '8px 0' },
   searchDropdown: { position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', borderRadius: '8px', boxShadow: '0 4px 20px rgba(0,0,0,0.2)', zIndex: 300, marginTop: '4px', overflow: 'hidden' },
   searchGroup: { padding: '6px 12px', fontSize: '11px', fontWeight: 700, color: '#888', background: '#f5f5f5' },

@@ -2,9 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { Project, User, Task, Dependency } from '../../types'
 import { projectsApi, usersApi, tasksApi, dependenciesApi } from '../../api/client'
 import { useAuth } from '../../contexts/AuthContext'
+import { User as UserIcon, Calendar, Package, FileText, Plus, AlertTriangle } from 'lucide-react'
+import { StateIcon, FeelingIcon } from '../Icons'
 
-const STATE_ICONS: Record<string, string> = { '進行中': '🔵', '待機中': '⚪', '完了': '🟢' }
-const FEELING_ICONS: Record<string, string> = { '順調': '✓', 'やや不安': '△', '遅延しそう': '⚠', '相談したい': '💬' }
 const FEELING_COLORS: Record<string, string> = { '順調': '#2e7d32', 'やや不安': '#f57f17', '遅延しそう': '#c62828', '相談したい': '#6a1b9a' }
 
 type DisplayMode = 'active' | 'archived' | 'all'
@@ -45,7 +45,7 @@ export default function ProjectsTab() {
     <div style={s.container}>
       {/* toolbar */}
       <div style={s.toolbar}>
-        <button style={s.newBtn} onClick={() => setShowNewForm(true)}>＋ 新規登録</button>
+        <button style={s.newBtn} onClick={() => setShowNewForm(true)}><span style={{display:'inline-flex',alignItems:'center',gap:4}}><Plus size={14}/>新規登録</span></button>
         <div style={s.modeGroup}>
           {(['active', 'archived', 'all'] as DisplayMode[]).map((m) => (
             <button key={m} onClick={() => setDisplayMode(m)}
@@ -141,11 +141,11 @@ function ProjectCard({ project: p, onEdit, onTasks, onClose }: {
         </div>
       </div>
       <div style={s.cardMeta}>
-        <span>👤 {p.owner_name}</span>
-        <span>📅 {fmt(p.start_date)} 〜 {fmt(p.end_date)}</span>
-        <span>{STATE_ICONS[p.state]} {p.state}</span>
-        <span style={{ color: FEELING_COLORS[p.feeling] || '#333' }}>
-          {FEELING_ICONS[p.feeling]} {p.feeling}
+        <span style={{display:'inline-flex',alignItems:'center',gap:4}}><UserIcon size={13}/>{p.owner_name}</span>
+        <span style={{display:'inline-flex',alignItems:'center',gap:4}}><Calendar size={13}/>{fmt(p.start_date)} 〜 {fmt(p.end_date)}</span>
+        <span style={{display:'inline-flex',alignItems:'center',gap:4}}><StateIcon state={p.state} size={12}/>{p.state}</span>
+        <span style={{ color: FEELING_COLORS[p.feeling] || '#333', display:'inline-flex', alignItems:'center', gap:4 }}>
+          <FeelingIcon feeling={p.feeling} size={12}/>{p.feeling}
         </span>
       </div>
       {p.tags.length > 0 && (
@@ -154,8 +154,8 @@ function ProjectCard({ project: p, onEdit, onTasks, onClose }: {
         </div>
       )}
       <div style={s.cardLinks}>
-        {p.box_url && <a href={p.box_url} target="_blank" rel="noreferrer" style={s.link}>📦 Box</a>}
-        {obsidianUri && <a href={obsidianUri} style={s.link}>🗒 Obsidian</a>}
+        {p.box_url && <a href={p.box_url} target="_blank" rel="noreferrer" style={{...s.link,display:'inline-flex',alignItems:'center',gap:4}}><Package size={13}/>Box</a>}
+        {obsidianUri && <a href={obsidianUri} style={{...s.link,display:'inline-flex',alignItems:'center',gap:4}}><FileText size={13}/>Obsidian</a>}
       </div>
       <div style={s.cardActions}>
         {!p.archived && (
@@ -265,17 +265,17 @@ function ProjectFormModal({ project, users, currentUser, onClose, onSaved }: Pro
           <div style={{ display: 'flex', gap: '12px' }}>
             <FormField label="State" style={{ flex: 1 }}>
               <select style={modal.input} value={form.state} onChange={(e) => set('state', e.target.value)}>
-                <option value="進行中">🔵 進行中</option>
-                <option value="待機中">⚪ 待機中</option>
-                <option value="完了">🟢 完了</option>
+                <option value="進行中">進行中</option>
+                <option value="待機中">待機中</option>
+                <option value="完了">完了</option>
               </select>
             </FormField>
             <FormField label="Feeling" style={{ flex: 1 }}>
               <select style={modal.input} value={form.feeling} onChange={(e) => set('feeling', e.target.value)}>
-                <option value="順調">✓ 順調</option>
-                <option value="やや不安">△ やや不安</option>
-                <option value="遅延しそう">⚠ 遅延しそう</option>
-                <option value="相談したい">💬 相談したい</option>
+                <option value="順調">順調</option>
+                <option value="やや不安">やや不安</option>
+                <option value="遅延しそう">遅延しそう</option>
+                <option value="相談したい">相談したい</option>
               </select>
             </FormField>
           </div>
@@ -380,7 +380,7 @@ function TaskManagementModal({ project, onClose }: { project: Project; onClose: 
               <label style={modal.label}>終了日</label>
               <input type="date" style={modal.input} value={newTask.planned_end} onChange={(e) => setNewTask((f) => ({ ...f, planned_end: e.target.value }))} />
             </div>
-            <button onClick={addTask} disabled={loading} style={{ ...modal.submitBtn, alignSelf: 'flex-end', padding: '8px 14px' }}>追加</button>
+            <button onClick={addTask} disabled={loading} style={{ ...modal.submitBtn, alignSelf: 'flex-end', padding: '8px 14px' }}><span style={{display:'inline-flex',alignItems:'center',gap:4}}><Plus size={13}/>追加</span></button>
           </div>
 
           {/* task list */}
@@ -511,11 +511,11 @@ function CloseModal({ project, onClose, onClosed }: { project: Project; onClose:
                 <button type="button" onClick={() => removeOutput(i)} style={{ ...smBtn, color: '#c62828', padding: '0 8px' }}>×</button>
               </div>
             ))}
-            <button type="button" onClick={addOutput} style={{ ...smBtn, marginTop: '4px' }}>＋ 追加</button>
+            <button type="button" onClick={addOutput} style={{ ...smBtn, marginTop: '4px' }}><span style={{display:'inline-flex',alignItems:'center',gap:4}}><Plus size={13}/>追加</span></button>
           </div>
           {error && <p style={modal.error}>{error}</p>}
           <div style={{ background: '#fff3e0', border: '1px solid #ffb74d', borderRadius: '6px', padding: '10px 12px', fontSize: '13px', color: '#e65100' }}>
-            ⚠ クローズすると archived = true になり、アクティブ一覧から除外されます。
+            <span style={{display:'inline-flex',alignItems:'center',gap:4}}><AlertTriangle size={13}/>クローズすると archived = true になり、アクティブ一覧から除外されます。</span>
           </div>
           <div style={modal.footer}>
             <button type="button" onClick={onClose} style={modal.cancelBtn}>キャンセル</button>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
+import { FolderOpen, Folder, FileText, Paperclip, Eye, RefreshCw, ChevronDown, ChevronRight } from 'lucide-react'
 import { VaultNode } from '../types'
 import { vaultApi } from '../api/client'
 import ObsidianPreview from './ObsidianPreview'
@@ -52,9 +53,9 @@ export default function VaultExplorer({ onClose }: Props) {
   return (
     <div style={styles.panel}>
       <div style={styles.header}>
-        <span style={styles.title}>📂 Vault</span>
+        <span style={styles.title}><FolderOpen size={14} style={{ verticalAlign: 'middle', marginRight: '4px' }} /> Vault</span>
         <button style={styles.syncBtn} onClick={handleSync} disabled={syncing}>
-          {syncing ? '同期中...' : '↻ 同期'}
+          {syncing ? '同期中...' : <><RefreshCw size={12} style={{ verticalAlign: 'middle', marginRight: '2px' }} /> 同期</>}
         </button>
         <button style={styles.closeBtn} onClick={onClose}>×</button>
       </div>
@@ -111,12 +112,16 @@ function TreeNode({ node, depth = 0, onPreview }: { node: VaultNode; depth?: num
         onMouseLeave={() => setHovering(false)}
       >
         {!isFile && (
-          <span style={{ fontSize: '10px', color: '#888', width: '10px' }}>
-            {open ? '▼' : '▶'}
+          <span style={{ color: '#888', width: '10px', display:'inline-flex', alignItems:'center' }}>
+            {open ? <ChevronDown size={10}/> : <ChevronRight size={10}/>}
           </span>
         )}
         {isFile && <span style={{ width: '10px' }} />}
-        <span>{isFile ? (isMarkdown ? '📄' : '📎') : '📁'}</span>
+        <span>
+          {isFile
+            ? (isMarkdown ? <FileText size={13} /> : <Paperclip size={13} />)
+            : (open ? <FolderOpen size={13} /> : <Folder size={13} />)}
+        </span>
         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {node.name}
         </span>
@@ -125,7 +130,7 @@ function TreeNode({ node, depth = 0, onPreview }: { node: VaultNode; depth?: num
             style={styles.previewBtn}
             onClick={(e) => { e.stopPropagation(); onPreview(node.path) }}
           >
-            👁
+            <Eye size={13} />
           </button>
         )}
       </div>

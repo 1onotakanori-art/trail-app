@@ -72,10 +72,10 @@ export default function QuickAddModal({ users, onClose, onCreated }: Props) {
 
           <label style={styles.label}>Feeling</label>
           <select style={styles.input} value={form.feeling} onChange={(e) => set('feeling', e.target.value)}>
-            <option value="順調">✓ 順調</option>
-            <option value="やや不安">△ やや不安</option>
-            <option value="遅延しそう">⚠ 遅延しそう</option>
-            <option value="相談したい">💬 相談したい</option>
+            <option value="順調">順調</option>
+            <option value="やや不安">やや不安</option>
+            <option value="遅延しそう">遅延しそう</option>
+            <option value="相談したい">相談したい</option>
           </select>
 
           {error && <p style={{ color: '#d32f2f', fontSize: '13px', margin: 0 }}>{error}</p>}

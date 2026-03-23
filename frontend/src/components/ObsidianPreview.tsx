@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
+import { FileText, Link } from 'lucide-react'
 import { vaultApi } from '../api/client'
 
 interface Props {
@@ -73,9 +74,9 @@ export default function ObsidianPreview({ path, onClose, initialPos }: Props) {
         onMouseDown={startDrag}
       >
         <span style={{ flex: 1, fontSize: '13px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          📄 {path.split('/').pop()}
+          <FileText size={13} style={{ verticalAlign: 'middle', marginRight: '4px' }} /> {path.split('/').pop()}
         </span>
-        <a href={obsidianUri} style={{ color: '#fff', fontSize: '14px', textDecoration: 'none' }} title="Obsidianで開く">🔗</a>
+        <a href={obsidianUri} style={{ color: '#fff', fontSize: '14px', textDecoration: 'none', display: 'flex', alignItems: 'center' }} title="Obsidianで開く"><Link size={14} /></a>
         <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '16px', padding: 0, lineHeight: 1 }}>×</button>
       </div>
       {/* content */}

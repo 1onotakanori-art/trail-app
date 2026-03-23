@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { GanttProject, Task, Dependency } from '../types'
 import { ParentPopover, ChildPopover } from './GanttPopover'
 import { dailyLogsApi, projectsApi, dependenciesApi } from '../api/client'
+import { MessageSquare, ClipboardList, FileText, Link, Pencil, Loader, Bot, AlertTriangle, Circle, Diamond, ChevronRight, ChevronDown, Check } from 'lucide-react'
+import { StateIcon, FeelingIcon } from './Icons'
 
 interface Props {
   projects: GanttProject[]
@@ -16,8 +18,6 @@ const ROW_H = 36
 const LABEL_W = 260
 const HEADER_H = 48
 
-const STATE_ICONS: Record<string, string> = { '進行中': '🔵', '待機中': '⚪', '完了': '🟢' }
-const FEELING_ICONS: Record<string, string> = { '順調': '✓', 'やや不安': '△', '遅延しそう': '⚠', '相談したい': '💬' }
 const PROGRESS_COLORS: Record<number, string> = {
   100: '#1565c0', 80: '#42a5f5', 60: '#90caf9', 40: '#bbdefb', 20: '#e3f2fd', 0: '#bdbdbd',
 }
@@ -48,8 +48,6 @@ export default function GanttChart({ projects, onRefresh, onChatOpen }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   // 4-21: Dependency drag state
   const [depDrag, setDepDrag] = useState<{ fromTaskId: string; projectId: string } | null>(null)
-  // 4-23: Task bar D&D state
-  const [taskDrag, setTaskDrag] = useState<{ taskId: string; startX: number; origStart: string; origEnd: string } | null>(null)
 
   // compute date range
   const allDates = projects.flatMap((p) => [isoToDate(p.start_date), isoToDate(p.end_date)])
@@ -105,24 +103,6 @@ export default function GanttChart({ projects, onRefresh, onChatOpen }: Props) {
     setDepDrag(null)
   }, [depDrag, onRefresh])
 
-  // 4-23: Handle task bar D&D for date adjustment
-  const handleTaskDragEnd = useCallback(async (taskId: string, deltaPixels: number) => {
-    const deltaDays = Math.round(deltaPixels / DAY_W)
-    if (deltaDays === 0) { setTaskDrag(null); return }
-    if (!taskDrag) return
-    const newStart = addDays(isoToDate(taskDrag.origStart), deltaDays)
-    const newEnd = addDays(isoToDate(taskDrag.origEnd), deltaDays)
-    try {
-      await (await import('../api/client')).tasksApi.update(taskId, {
-        planned_start: newStart.toISOString().slice(0, 10),
-        planned_end: newEnd.toISOString().slice(0, 10),
-      })
-      onRefresh()
-    } catch (err) {
-      console.error('Failed to update task dates:', err)
-    }
-    setTaskDrag(null)
-  }, [taskDrag, onRefresh])
 
   // render rows
   const rows: React.ReactNode[] = []
@@ -142,13 +122,13 @@ export default function GanttChart({ projects, onRefresh, onChatOpen }: Props) {
         {/* label */}
         <div style={{ width: LABEL_W, minWidth: LABEL_W, padding: '0 8px', display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden', borderRight: '1px solid #e0e0e0', height: '100%' }}>
           <button style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '11px', color: '#666', padding: 0, width: '14px' }} onClick={() => toggleExpand(project.id)}>
-            {project.tasks.length > 0 ? (isExpanded ? '▼' : '▶') : ' '}
+            {project.tasks.length > 0 ? (isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />) : null}
           </button>
           <span style={{ flex: 1, fontSize: '13px', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{project.name}</span>
           {/* 4-8: Chat button on parent task row */}
-          {onChatOpen && <button style={iconBtn} onClick={(e) => { e.stopPropagation(); onChatOpen(project.id) }} title="チャット">💬</button>}
-          <button style={iconBtn} onClick={(e) => handleStateClick(e, project.id, 'state')} title="State">{STATE_ICONS[project.state]}</button>
-          <button style={iconBtn} onClick={(e) => handleStateClick(e, project.id, 'feeling')} title="Feeling">{FEELING_ICONS[project.feeling]}</button>
+          {onChatOpen && <button style={iconBtn} onClick={(e) => { e.stopPropagation(); onChatOpen(project.id) }} title="チャット"><MessageSquare size={14} /></button>}
+          <button style={iconBtn} onClick={(e) => handleStateClick(e, project.id, 'state')} title="State"><StateIcon state={project.state} size={12} /></button>
+          <button style={iconBtn} onClick={(e) => handleStateClick(e, project.id, 'feeling')} title="Feeling"><FeelingIcon feeling={project.feeling} size={12} /></button>
         </div>
         {/* cells */}
         <div style={{ flex: 1, display: 'flex', position: 'relative', height: '100%' }}>
@@ -171,7 +151,7 @@ export default function GanttChart({ projects, onRefresh, onChatOpen }: Props) {
                 }}
                 onClick={inRange ? (e) => handleCellClick(e, 'parent', project.id, dStr) : undefined}
               >
-                {hasLog && <span style={{ fontSize: '10px', color: '#1565c0', fontWeight: 'bold' }}>●</span>}
+                {hasLog && <Circle size={6} fill="currentColor" style={{ color: '#1565c0' }} />}
               </div>
             )
           })}
@@ -180,7 +160,7 @@ export default function GanttChart({ projects, onRefresh, onChatOpen }: Props) {
             const idx = dateToIndex(minDate, isoToDate(ms.date))
             if (idx < 0 || idx >= totalDays) return null
             return (
-              <div key={ms.id} style={{ position: 'absolute', left: idx * DAY_W + DAY_W / 2 - 7, top: '50%', transform: 'translateY(-50%)', fontSize: '14px', zIndex: 5, cursor: 'help', userSelect: 'none' }} title={ms.title}>◆</div>
+              <div key={ms.id} style={{ position: 'absolute', left: idx * DAY_W + DAY_W / 2 - 7, top: '50%', transform: 'translateY(-50%)', zIndex: 5, cursor: 'help', userSelect: 'none', display: 'flex', alignItems: 'center' }} title={ms.title}><Diamond size={10} /></div>
             )
           })}
         </div>
@@ -211,8 +191,8 @@ export default function GanttChart({ projects, onRefresh, onChatOpen }: Props) {
                 onDragStart={() => setDepDrag({ fromTaskId: task.id, projectId: project.id })}
                 onDragEnd={() => setDepDrag(null)}
               >{task.title}</span>
-              <span style={{ fontSize: '11px', color: task.status === '完了' ? '#2e7d32' : task.status === '進行中' ? '#1565c0' : '#999' }}>
-                {task.status === '完了' ? '✓' : task.status === '進行中' ? '▶' : '○'}
+              <span style={{ fontSize: '11px', color: task.status === '完了' ? '#2e7d32' : task.status === '進行中' ? '#1565c0' : '#999', display: 'flex', alignItems: 'center' }}>
+                {task.status === '完了' ? <Check size={10} /> : task.status === '進行中' ? <ChevronRight size={10} /> : <Circle size={8} />}
               </span>
             </div>
             <div style={{ flex: 1, display: 'flex', position: 'relative', height: '100%' }}>
@@ -417,7 +397,10 @@ function StateModal({ field, rect, onSelect, onClose }: { projectId?: string; fi
           onMouseEnter={(e) => (e.currentTarget.style.background = '#f5f5f5')}
           onMouseLeave={(e) => (e.currentTarget.style.background = '')}
         >
-          {field === 'state' ? (STATE_ICONS[opt] + ' ' + opt) : (FEELING_ICONS[opt] + ' ' + opt)}
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {field === 'state' ? <StateIcon state={opt} size={12} /> : <FeelingIcon feeling={opt} size={12} />}
+            {opt}
+          </span>
         </div>
       ))}
     </div>
@@ -472,7 +455,7 @@ function WeeklySummaryRow({ project, minDate }: { project: GanttProject; minDate
   return (
     <div style={{ background: '#f8f9ff', borderBottom: '2px solid #c5cae9', padding: '10px 12px 10px' + LABEL_W }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', paddingLeft: LABEL_W }}>
-        <span style={{ fontSize: '13px', fontWeight: 600, color: '#555' }}>📋 週次サマリー</span>
+        <span style={{ fontSize: '13px', fontWeight: 600, color: '#555', display: 'flex', alignItems: 'center', gap: 4 }}><ClipboardList size={14} /> 週次サマリー</span>
         <div style={{ display: 'flex', gap: '4px', overflowX: 'auto' }}>
           {weeks.map((w) => {
             const d = new Date(w)
@@ -511,15 +494,15 @@ function WeeklySummaryRow({ project, minDate }: { project: GanttProject; minDate
               const wEnd = new Date(wd); wEnd.setDate(wd.getDate() + 6)
               return ld >= wd && ld <= wEnd
             }).map((l) => (
-              <div key={l.id} style={{ fontSize: '12px', color: '#1565c0', marginTop: '4px' }}>
-                📄 {l.obsidian_note_path?.split('/').pop()}
-                {l.obsidian_uri && <a href={l.obsidian_uri} style={{ marginLeft: '6px' }}>🔗</a>}
+              <div key={l.id} style={{ fontSize: '12px', color: '#1565c0', marginTop: '4px', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <FileText size={12} /> {l.obsidian_note_path?.split('/').pop()}
+                {l.obsidian_uri && <a href={l.obsidian_uri} style={{ marginLeft: '6px', display: 'flex', alignItems: 'center' }}><Link size={12} /></a>}
               </div>
             ))}
             <div style={{ marginTop: '8px', display: 'flex', gap: '6px' }}>
               <button onClick={() => { setEditContent(currentSummary?.content || ''); setEditing(true) }}
-                style={{ padding: '3px 10px', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}>
-                ✏ 編集
+                style={{ padding: '3px 10px', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <Pencil size={12} /> 編集
               </button>
               <button onClick={async () => {
                 if (!activeWeek || llmLoading) return
@@ -537,13 +520,13 @@ function WeeklySummaryRow({ project, minDate }: { project: GanttProject; minDate
                 }
               }}
                 disabled={llmLoading}
-                style={{ padding: '3px 10px', border: '1px solid #ddd', borderRadius: '4px', cursor: llmLoading ? 'default' : 'pointer', fontSize: '12px', background: '#fff8e1', opacity: llmLoading ? 0.7 : 1 }}>
-                {llmLoading ? '⏳ 生成中...' : '🤖 LLM生成'}
+                style={{ padding: '3px 10px', border: '1px solid #ddd', borderRadius: '4px', cursor: llmLoading ? 'default' : 'pointer', fontSize: '12px', background: '#fff8e1', opacity: llmLoading ? 0.7 : 1, display: 'flex', alignItems: 'center', gap: 4 }}>
+                {llmLoading ? <><Loader size={12} /> 生成中...</> : <><Bot size={14} /> LLM生成</>}
               </button>
             </div>
             {llmError && (
-              <div style={{ marginTop: '6px', fontSize: '12px', color: '#c62828', background: '#ffebee', padding: '4px 8px', borderRadius: '4px' }}>
-                ⚠ {llmError}
+              <div style={{ marginTop: '6px', fontSize: '12px', color: '#c62828', background: '#ffebee', padding: '4px 8px', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <AlertTriangle size={12} /> {llmError}
               </div>
             )}
           </div>

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { DailyLog } from '../types'
 import { ganttApi, tasksApi, dailyLogsApi } from '../api/client'
 import ObsidianPreview from './ObsidianPreview'
+import { FileText, Eye, Link, MessageSquare, Plus } from 'lucide-react'
 
 interface ParentPopoverProps {
   projectId: string
@@ -50,9 +51,9 @@ export function ParentPopover({ projectId, date, anchorRect, onClose }: ParentPo
     <div ref={ref} style={{ position: 'fixed', top, left, background: '#fff', border: '1px solid #ddd', borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,0.15)', minWidth: '260px', maxWidth: '320px', zIndex: 500, padding: '10px 12px' }}>
       {logs.filter(l => l.obsidian_note_path).map((log) => (
         <div key={log.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', fontSize: '13px' }}>
-          <span>📄 {log.obsidian_note_path?.split('/').pop()}</span>
-          <button style={btnStyle} onClick={() => setPreviewPath(log.obsidian_note_path!)}>👁</button>
-          {log.obsidian_uri && <a href={log.obsidian_uri} style={{ fontSize: '13px', textDecoration: 'none' }}>🔗</a>}
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><FileText size={13} /> {log.obsidian_note_path?.split('/').pop()}</span>
+          <button style={btnStyle} onClick={() => setPreviewPath(log.obsidian_note_path!)}><Eye size={13} /></button>
+          {log.obsidian_uri && <a href={log.obsidian_uri} style={{ fontSize: '13px', textDecoration: 'none', display: 'flex', alignItems: 'center' }}><Link size={13} /></a>}
         </div>
       ))}
       <hr style={{ margin: '6px 0', border: 'none', borderTop: '1px solid #eee' }} />
@@ -63,9 +64,9 @@ export function ParentPopover({ projectId, date, anchorRect, onClose }: ParentPo
         </div>
       ) : (
         <div style={{ fontSize: '13px', color: '#555' }}>
-          {comment ? <span>💬 {comment}</span> : null}
+          {comment ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><MessageSquare size={13} /> {comment}</span> : null}
           <button style={{ ...btnStyle, color: '#1565c0', marginLeft: comment ? '8px' : 0 }} onClick={() => setEditingComment(true)}>
-            {comment ? '編集' : '＋ コメント追加'}
+            {comment ? '編集' : <><Plus size={13} /> コメント追加</>}
           </button>
         </div>
       )}
