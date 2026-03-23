@@ -29,9 +29,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = useCallback(async (username: string, password: string) => {
     const res = await authApi.login(username, password)
-    const { access_token, user: userData } = res.data
+    const { access_token, refresh_token, user: userData } = res.data
     localStorage.setItem('trail_token', access_token)
     localStorage.setItem('trail_user', JSON.stringify(userData))
+    // 5-1: Store refresh token for JWT refresh flow
+    if (refresh_token) localStorage.setItem('trail_refresh_token', refresh_token)
     setToken(access_token)
     setUser(userData)
   }, [])
@@ -39,6 +41,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(() => {
     localStorage.removeItem('trail_token')
     localStorage.removeItem('trail_user')
+    localStorage.removeItem('trail_refresh_token')  // 5-1: Clear refresh token
     setToken(null)
     setUser(null)
   }, [])

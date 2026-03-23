@@ -1098,8 +1098,16 @@ obsidian://open?vault={VAULT_NAME}&file={ENCODED_RELATIVE_PATH}
 | PATCH | /api/users/{id} | ユーザー編集 |
 | POST | /api/users/{id}/reset-password | パスワードリセット（管理者のみ） |
 | PATCH | /api/users/{id}/settings | ダッシュボードウィジェット設定保存 |
+| PUT | /api/users/{id}/profile | プロフィール編集（表示名変更） |
+| POST | /api/users/{id}/change-password | パスワード変更（本人のみ） |
 
-### 9.15 WebSocket
+### 9.15 ダッシュボード
+| Method | Path | 説明 |
+|--------|------|------|
+| GET | /api/dashboard | ダッシュボードデータ取得（ウィジェット用集計） |
+| GET | /api/dashboard/alerts | フォローアラート一覧取得 |
+
+### 9.16 WebSocket
 | Path | 説明 |
 |------|------|
 | /ws | メイン接続（JWT認証） |

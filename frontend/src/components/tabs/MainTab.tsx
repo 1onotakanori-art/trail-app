@@ -1,9 +1,214 @@
-export default function MainTab() {
+import { useState, useEffect, useCallback } from 'react'
+import { GanttProject, User, Channel } from '../../types'
+import { ganttApi, usersApi, messagesApi, channelsApi } from '../../api/client'
+import { useAuth } from '../../contexts/AuthContext'
+import { useWebSocket } from '../../hooks/useWebSocket'
+import GanttChart from '../GanttChart'
+import VaultExplorer from '../VaultExplorer'
+import QuickAddModal from '../QuickAddModal'
+
+type ViewMode = 'all' | 'personal' | 'tag'
+
+interface ChatPanelProps {
+  channel: Channel | null
+  onClose: () => void
+}
+
+function ChatPanel({ channel, onClose }: ChatPanelProps) {
+  const { token } = useAuth()
+  const [messages, setMessages] = useState<{ id: string; display_name: string; content: string; tag: string | null; created_at: string }[]>([])
+  const [input, setInput] = useState('')
+  const [tag, setTag] = useState('')
+
+  const loadMessages = useCallback(async () => {
+    if (!channel) return
+    try { // 4-2: try-catch
+      const res = await messagesApi.list(channel.id, { limit: 30 })
+      setMessages(res.data)
+    } catch (err) {
+      console.error('Failed to load chat messages:', err)
+    }
+  }, [channel])
+
+  useEffect(() => { loadMessages() }, [loadMessages])
+
+  useWebSocket(token, (data) => {
+    const d = data as { type: string; channel_id?: string }
+    if (d.type === 'new_message' && d.channel_id === channel?.id) loadMessages()
+  })
+
+  const send = async () => {
+    if (!input.trim() || !channel) return
+    try { // 4-2: try-catch
+      await messagesApi.post(channel.id, { content: input.trim(), tag: tag || undefined })
+      setInput('')
+      loadMessages()
+    } catch (err) {
+      console.error('Failed to send message:', err)
+    }
+  }
+
+  const TAG_COLORS: Record<string, string> = { '報告': '#1565c0', '連絡': '#2e7d32', '相談': '#e65100' }
+  const fmt = (dt: string) => { if (!dt) return ''; const d = new Date(dt); return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` }
+
   return (
-    <div style={{ padding: '24px', color: '#555' }}>
-      <h2 style={{ margin: '0 0 16px', color: '#1a237e' }}>メインタブ</h2>
-      <p>ガントチャート + Vaultエクスプローラー + チャットパネル</p>
-      <p style={{ fontSize: '13px', color: '#888' }}>Phase 3 (ガントチャート) で実装予定</p>
+    <div style={{ width: '300px', borderLeft: '1px solid #e0e0e0', background: '#fff', display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ padding: '10px 12px', borderBottom: '1px solid #eee', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <strong style={{ flex: 1, fontSize: '14px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{channel?.name || 'チャット'}</strong>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px', color: '#666' }}>×</button>
+      </div>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        {messages.map((m) => (
+          <div key={m.id} style={{ background: '#f8f9ff', borderRadius: '6px', padding: '8px 10px' }}>
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '4px' }}>
+              {m.tag && <span style={{ background: TAG_COLORS[m.tag] || '#666', color: '#fff', fontSize: '10px', padding: '1px 6px', borderRadius: '8px' }}>{m.tag}</span>}
+              <span style={{ fontWeight: 600, fontSize: '12px' }}>{m.display_name}</span>
+              <span style={{ fontSize: '11px', color: '#aaa', marginLeft: 'auto' }}>{fmt(m.created_at)}</span>
+            </div>
+            <p style={{ margin: 0, fontSize: '13px', whiteSpace: 'pre-wrap' }}>{m.content}</p>
+          </div>
+        ))}
+      </div>
+      <div style={{ padding: '8px 12px', borderTop: '1px solid #eee', display: 'flex', gap: '6px' }}>
+        <select value={tag} onChange={(e) => setTag(e.target.value)} style={{ padding: '6px 4px', border: '1px solid #ddd', borderRadius: '4px', fontSize: '12px' }}>
+          <option value="">-</option>
+          <option value="報告">報告</option>
+          <option value="連絡">連絡</option>
+          <option value="相談">相談</option>
+        </select>
+        <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') send() }}
+          placeholder="メッセージ..." style={{ flex: 1, padding: '6px 8px', border: '1px solid #ddd', borderRadius: '4px', fontSize: '13px' }} />
+        <button onClick={send} style={{ padding: '6px 12px', background: '#1a237e', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px' }}>送信</button>
+      </div>
+    </div>
+  )
+}
+
+export default function MainTab() {
+  const { token } = useAuth()
+  const [projects, setProjects] = useState<GanttProject[]>([])
+  const [users, setUsers] = useState<User[]>([])
+  const [viewMode, setViewMode] = useState<ViewMode>('all')
+  const [selectedOwner, setSelectedOwner] = useState<string>('')
+  const [showVault, setShowVault] = useState(false)
+  const [chatChannel, setChatChannel] = useState<Channel | null>(null)
+  const [showQuickAdd, setShowQuickAdd] = useState(false)
+  // 4-9: Chat panel toggle state
+  const [showChat, setShowChat] = useState(false)
+
+  const loadGantt = useCallback(async () => {
+    try { // 4-2: try-catch
+      const params: Record<string, string> = {}
+      if (viewMode === 'personal' && selectedOwner) params.owner_id = selectedOwner
+      const res = await ganttApi.getAll(params)
+      setProjects(res.data)
+    } catch (err) {
+      console.error('Failed to load gantt data:', err)
+    }
+  }, [viewMode, selectedOwner])
+
+  useEffect(() => { loadGantt() }, [loadGantt])
+  useEffect(() => { usersApi.list().then((r) => setUsers(r.data)).catch(() => {}) }, [])
+
+  // 4-8: Handle chat button click from GanttChart parent row
+  const handleChatOpen = useCallback(async (projectId: string) => {
+    try {
+      const res = await channelsApi.list()
+      const ch = res.data.find((c: Channel) => c.project_id === projectId)
+      if (ch) {
+        setChatChannel(ch)
+        setShowChat(true)
+      }
+    } catch (err) {
+      console.error('Failed to load channel:', err)
+    }
+  }, [])
+
+  useWebSocket(token, (data) => {
+    const d = data as { type: string }
+    if (['project_created', 'project_updated', 'progress_updated', 'note_synced', 'dependency_changed'].includes(d.type)) {
+      loadGantt()
+    }
+  })
+
+  return (
+    <div style={{ display: 'flex', height: 'calc(100vh - 92px)', overflow: 'hidden' }}>
+      {/* Vault panel */}
+      {showVault && <VaultExplorer onClose={() => setShowVault(false)} />}
+
+      {/* Main area */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {/* Toolbar */}
+        <div style={{ padding: '8px 12px', background: '#fff', borderBottom: '1px solid #e0e0e0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button
+            onClick={() => setShowVault(!showVault)}
+            style={{ padding: '5px 10px', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', background: showVault ? '#e3f2fd' : '#fff' }}
+          >
+            📂 Vault
+          </button>
+          <div style={{ display: 'flex', background: '#f5f5f5', borderRadius: '6px', padding: '2px' }}>
+            {(['all', 'personal', 'tag'] as ViewMode[]).map((m) => (
+              <button key={m} onClick={() => setViewMode(m)}
+                style={{ padding: '4px 12px', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', background: viewMode === m ? '#fff' : 'transparent', fontWeight: viewMode === m ? 600 : 400, boxShadow: viewMode === m ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}>
+                {m === 'all' ? '全体' : m === 'personal' ? '個人' : 'タグ別'}
+              </button>
+            ))}
+          </div>
+          {viewMode === 'personal' && (
+            <select value={selectedOwner} onChange={(e) => setSelectedOwner(e.target.value)}
+              style={{ padding: '5px 8px', border: '1px solid #ddd', borderRadius: '4px', fontSize: '13px' }}>
+              <option value="">全メンバー</option>
+              {users.map((u) => <option key={u.id} value={u.id}>{u.display_name}</option>)}
+            </select>
+          )}
+          {/* 4-18: Export button placeholder */}
+          <button onClick={() => {
+            // 4-18: Gantt export - uses html2canvas + jsPDF (libraries would need to be installed)
+            const el = document.querySelector('[data-gantt-container]')
+            if (el) {
+              alert('ガントチャートをエクスポート中... (html2canvas + jsPDF が必要です)')
+            }
+          }}
+            style={{ padding: '5px 10px', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', background: '#fff' }}>
+            📥 エクスポート
+          </button>
+          {/* 4-9: Chat panel toggle button */}
+          <button
+            onClick={() => setShowChat(!showChat)}
+            style={{ padding: '5px 10px', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', background: showChat ? '#e3f2fd' : '#fff' }}
+          >
+            💬 チャット
+          </button>
+          <button onClick={() => setShowQuickAdd(true)}
+            style={{ marginLeft: 'auto', padding: '5px 14px', background: '#1a237e', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px' }}>
+            ＋ 新規業務
+          </button>
+        </div>
+
+        {/* Gantt */}
+        <div style={{ flex: 1, overflow: 'hidden' }}>
+          <GanttChart
+            projects={projects}
+            viewMode={viewMode}
+            selectedOwner={selectedOwner}
+            onRefresh={loadGantt}
+            onChatOpen={handleChatOpen}
+          />
+        </div>
+      </div>
+
+      {/* Chat panel - 4-9: Show when toggle is on or a channel is selected */}
+      {(showChat || chatChannel) && (
+        <ChatPanel channel={chatChannel} onClose={() => { setChatChannel(null); setShowChat(false) }} />
+      )}
+
+      {showQuickAdd && (
+        <QuickAddModal
+          users={users}
+          onClose={() => setShowQuickAdd(false)}
+          onCreated={() => { setShowQuickAdd(false); loadGantt() }}
+        />
+      )}
     </div>
   )
 }

@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS user_settings (
 CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    owner_id TEXT NOT NULL REFERENCES users(id),
+    owner_id TEXT REFERENCES users(id) ON DELETE SET NULL,
     state TEXT NOT NULL DEFAULT '進行中' CHECK(state IN ('進行中', '待機中', '完了')),
     feeling TEXT DEFAULT '順調' CHECK(feeling IN ('順調', 'やや不安', '遅延しそう', '相談したい')),
     feeling_updated_at DATETIME,
@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS task_dependencies (
     id TEXT PRIMARY KEY,
     predecessor_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
     successor_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-    dep_type TEXT NOT NULL DEFAULT 'FS',
+    dep_type TEXT NOT NULL DEFAULT 'FS' CHECK(dep_type IN ('FS')),
     created_at DATETIME NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -78,13 +78,14 @@ CREATE TABLE IF NOT EXISTS milestones (
     project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     date DATE NOT NULL,
-    description TEXT
+    description TEXT NOT NULL DEFAULT '',
+    created_at DATETIME NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS daily_logs (
     id TEXT PRIMARY KEY,
     project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    task_id TEXT REFERENCES tasks(id),
+    task_id TEXT REFERENCES tasks(id) ON DELETE SET NULL,
     date DATE NOT NULL,
     comment TEXT,
     obsidian_note_path TEXT,
@@ -123,7 +124,7 @@ CREATE TABLE IF NOT EXISTS channel_subscriptions (
 CREATE TABLE IF NOT EXISTS messages (
     id TEXT PRIMARY KEY,
     channel_id TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
-    user_id TEXT NOT NULL REFERENCES users(id),
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     content TEXT NOT NULL,
     tag TEXT CHECK(tag IN ('報告', '連絡', '相談')),
     mentions TEXT NOT NULL DEFAULT '[]',
@@ -168,6 +169,13 @@ INSERT OR IGNORE INTO channels (id, project_id, name, type)
 VALUES ('channel-general', NULL, '全体', 'general');
 """
 
+# Migrations for existing databases (non-destructive ALTER TABLE additions)
+MIGRATION_SQL = """
+-- 1-5: Add created_at to milestones if missing
+-- (ALTER TABLE ADD COLUMN is safe — ignores if column exists via IF NOT EXISTS-like behaviour in SQLite)
+-- SQLite does not support IF NOT EXISTS for ADD COLUMN, so we handle errors in code.
+"""
+
 
 async def get_db():
     async with aiosqlite.connect(DB_PATH) as db:
@@ -179,4 +187,13 @@ async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
         await db.executescript(CREATE_TABLES_SQL)
         await db.executescript(SEED_SQL)
+        # Run safe migrations for existing databases
+        migrations = [
+            "ALTER TABLE milestones ADD COLUMN created_at DATETIME NOT NULL DEFAULT (datetime('now'))",
+        ]
+        for sql in migrations:
+            try:
+                await db.execute(sql)
+            except Exception:
+                pass  # Column already exists
         await db.commit()
