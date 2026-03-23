@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../contexts/AuthContext'
-import { notificationsApi, searchApi, usersApi } from '../api/client'
+import { notificationsApi, searchApi, usersApi, settingsApi } from '../api/client'
 import { Notification } from '../types'
 import { useWebSocket } from '../hooks/useWebSocket'
 
@@ -22,6 +22,7 @@ export default function Header({ onSearch, onQuickAdd, onNavigate }: Props) {
   // 4-15, 4-16: Profile/password modal state
   const [showProfileModal, setShowProfileModal] = useState(false)
   const [showPasswordModal, setShowPasswordModal] = useState(false)
+  const [showLlmSettings, setShowLlmSettings] = useState(false)
 
   const loadUnreadCount = useCallback(async () => {
     try {
@@ -208,6 +209,11 @@ export default function Header({ onSearch, onQuickAdd, onNavigate }: Props) {
               <button style={styles.dropdownButton} onClick={() => { setShowPasswordModal(true); setShowUserMenu(false) }}>
                 パスワード変更
               </button>
+              {user?.role === 'admin' && (
+                <button style={styles.dropdownButton} onClick={() => { setShowLlmSettings(true); setShowUserMenu(false) }}>
+                  🤖 LLM設定
+                </button>
+              )}
               <hr style={{ margin: 0, border: 'none', borderTop: '1px solid #eee' }} />
               <button style={{ ...styles.dropdownButton, color: '#d32f2f' }} onClick={logout}>ログアウト</button>
             </div>
@@ -221,6 +227,9 @@ export default function Header({ onSearch, onQuickAdd, onNavigate }: Props) {
       {/* 4-16: Password change modal */}
       {showPasswordModal && user && (
         <PasswordModal userId={user.id} onClose={() => setShowPasswordModal(false)} />
+      )}
+      {showLlmSettings && (
+        <LlmSettingsModal onClose={() => setShowLlmSettings(false)} />
       )}
     </header>
   )
@@ -327,6 +336,119 @@ function PasswordModal({ userId, onClose }: { userId: string; onClose: () => voi
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
             <button type="button" onClick={onClose} style={modalStyles.cancelBtn}>キャンセル</button>
             <button type="submit" style={modalStyles.submitBtn} disabled={loading}>{loading ? '変更中...' : '変更'}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// LLM Settings Modal
+function LlmSettingsModal({ onClose }: { onClose: () => void }) {
+  const [url, setUrl] = useState('')
+  const [model, setModel] = useState('')
+  const [status, setStatus] = useState<{ connected?: boolean; available_models?: string[] } | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [checking, setChecking] = useState(false)
+  const [error, setError] = useState('')
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    settingsApi.get().then((r) => {
+      setUrl(r.data.lm_studio_url || '')
+      setModel(r.data.lm_studio_model || '')
+      setStatus({ connected: r.data.lm_studio_connected, available_models: r.data.lm_studio_available_models })
+    }).catch(() => {})
+  }, [])
+
+  const checkConnection = async () => {
+    setChecking(true)
+    setError('')
+    try {
+      const r = await settingsApi.checkLlm()
+      setStatus(r.data)
+    } catch {
+      setError('接続確認に失敗しました')
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+    setError('')
+    try {
+      await settingsApi.update({ lm_studio_url: url, lm_studio_model: model })
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    } catch {
+      setError('保存に失敗しました')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div style={modalStyles.overlay} onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      <div style={{ ...modalStyles.box, width: '480px' }}>
+        <div style={modalStyles.header}>
+          <strong>🤖 LLM設定（LM Studio）</strong>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer' }}>×</button>
+        </div>
+        <form onSubmit={save} style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div>
+            <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '4px' }}>
+              LM Studio URL（OpenAI互換エンドポイント）
+            </label>
+            <input
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="http://localhost:1234/v1"
+              style={modalStyles.input}
+            />
+            <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>
+              例: http://localhost:1234/v1（LM Studio のデフォルト）
+            </div>
+          </div>
+          <div>
+            <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '4px' }}>モデル名</label>
+            <input
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              placeholder="local-model"
+              style={modalStyles.input}
+            />
+            {status?.available_models && status.available_models.length > 0 && (
+              <div style={{ marginTop: '4px', display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                {status.available_models.map((m) => (
+                  <button key={m} type="button"
+                    onClick={() => setModel(m)}
+                    style={{ fontSize: '11px', padding: '2px 8px', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', background: model === m ? '#e8eaf6' : '#fff' }}>
+                    {m}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button type="button" onClick={checkConnection} disabled={checking}
+              style={{ padding: '6px 12px', border: '1px solid #ddd', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', background: '#f5f5f5' }}>
+              {checking ? '確認中...' : '接続確認'}
+            </button>
+            {status && (
+              <span style={{ fontSize: '13px', color: status.connected ? '#2e7d32' : '#c62828' }}>
+                {status.connected ? '✓ 接続OK' : '✗ 未接続'}
+              </span>
+            )}
+          </div>
+          {error && <p style={{ color: '#c62828', fontSize: '13px', margin: 0 }}>{error}</p>}
+          {saved && <p style={{ color: '#2e7d32', fontSize: '13px', margin: 0 }}>保存しました</p>}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+            <button type="button" onClick={onClose} style={modalStyles.cancelBtn}>キャンセル</button>
+            <button type="submit" style={modalStyles.submitBtn} disabled={loading}>
+              {loading ? '保存中...' : '保存'}
+            </button>
           </div>
         </form>
       </div>

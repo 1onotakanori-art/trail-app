@@ -205,3 +205,10 @@ export const dashboardApi = {
   get: () => api.get('/dashboard'),
   alerts: () => api.get('/dashboard/alerts'),
 }
+
+export const settingsApi = {
+  get: () => api.get('/settings'),
+  update: (data: { lm_studio_url?: string; lm_studio_model?: string }) =>
+    api.patch('/settings', data),
+  checkLlm: () => api.get('/settings/llm-check'),
+}

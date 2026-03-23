@@ -431,6 +431,8 @@ function WeeklySummaryRow({ project, minDate }: { project: GanttProject; minDate
   const [activeWeek, setActiveWeek] = useState<string>('')
   const [editing, setEditing] = useState(false)
   const [editContent, setEditContent] = useState('')
+  const [llmLoading, setLlmLoading] = useState(false)
+  const [llmError, setLlmError] = useState('')
 
   useEffect(() => {
     dailyLogsApi.listWeekly(project.id).then((res) => {
@@ -519,21 +521,31 @@ function WeeklySummaryRow({ project, minDate }: { project: GanttProject; minDate
                 style={{ padding: '3px 10px', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}>
                 ✏ 編集
               </button>
-              {/* 4-17 + 5-4: LLM generate button → API call */}
               <button onClick={async () => {
-                if (!activeWeek) return
+                if (!activeWeek || llmLoading) return
+                setLlmLoading(true)
+                setLlmError('')
                 try {
-                  await (await import('../api/client')).dailyLogsApi.generateWeekly(project.id, activeWeek)
+                  await dailyLogsApi.generateWeekly(project.id, activeWeek)
                   const { data } = await dailyLogsApi.listWeekly(project.id)
                   setSummaries(data)
-                } catch (err) {
-                  console.error('LLM generate failed:', err)
+                } catch (err: unknown) {
+                  const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+                  setLlmError(msg || 'LLM生成に失敗しました')
+                } finally {
+                  setLlmLoading(false)
                 }
               }}
-                style={{ padding: '3px 10px', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', background: '#fff8e1' }}>
-                🤖 LLM生成
+                disabled={llmLoading}
+                style={{ padding: '3px 10px', border: '1px solid #ddd', borderRadius: '4px', cursor: llmLoading ? 'default' : 'pointer', fontSize: '12px', background: '#fff8e1', opacity: llmLoading ? 0.7 : 1 }}>
+                {llmLoading ? '⏳ 生成中...' : '🤖 LLM生成'}
               </button>
             </div>
+            {llmError && (
+              <div style={{ marginTop: '6px', fontSize: '12px', color: '#c62828', background: '#ffebee', padding: '4px 8px', borderRadius: '4px' }}>
+                ⚠ {llmError}
+              </div>
+            )}
           </div>
         )}
       </div>

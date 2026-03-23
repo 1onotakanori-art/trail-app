@@ -162,6 +162,11 @@ CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
     content,
     tokenize="unicode61"
 );
+
+CREATE TABLE IF NOT EXISTS system_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL DEFAULT ''
+);
 """
 
 SEED_SQL = """

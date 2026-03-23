@@ -12,6 +12,7 @@ from auth import get_password_hash, ALGORITHM
 from websocket import manager
 from routers import auth, users, channels, messages, notifications
 from routers import projects, tasks, milestones, gantt, daily_logs, vault, search, dashboard
+from routers import settings as settings_router
 import aiosqlite
 
 logger = logging.getLogger(__name__)
@@ -146,6 +147,7 @@ app.include_router(daily_logs.router)
 app.include_router(vault.router)
 app.include_router(search.router)
 app.include_router(dashboard.router)
+app.include_router(settings_router.router)
 
 
 @app.get("/api/health")

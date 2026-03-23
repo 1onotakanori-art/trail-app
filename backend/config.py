@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     project_folder: str = "200_Projects"
     access_token_expire_hours: int = 1
     refresh_token_expire_days: int = 30
+    lm_studio_url: str = "http://localhost:1234/v1"
+    lm_studio_model: str = "local-model"
 
     class Config:
         env_file = ".env"
