@@ -26,6 +26,23 @@ function AppShell() {
 
   useEffect(() => { usersApi.list().then((r) => setUsers(r.data)).catch(() => {}) }, [])
 
+  const handleNavigate = (type: string, _id: string) => {
+    switch (type) {
+      case 'message':
+        setActiveTab('chat')
+        break
+      case 'project':
+      case 'task':
+        setActiveTab('projects')
+        break
+      case 'note':
+      case 'daily_log':
+      case 'weekly_summary':
+        setActiveTab('main')
+        break
+    }
+  }
+
   const renderTab = () => {
     switch (activeTab) {
       case 'main': return <MainTab />
@@ -37,7 +54,7 @@ function AppShell() {
 
   return (
     <div style={styles.shell}>
-      <Header onQuickAdd={() => setShowQuickAdd(true)} />
+      <Header onQuickAdd={() => setShowQuickAdd(true)} onNavigate={handleNavigate} />
       <nav style={styles.tabBar}>
         {TABS.map((tab) => (
           <button

@@ -99,16 +99,34 @@ export default function Header({ onSearch, onQuickAdd, onNavigate }: Props) {
         </div>
         {showSearch && searchResults.length > 0 && (
           <div style={styles.searchDropdown}>
-            {['message', 'project', 'note'].map((type) => {
+            {['message', 'project', 'task', 'note', 'daily_log', 'weekly_summary'].map((type) => {
               const items = searchResults.filter((r) => r.type === type)
               if (!items.length) return null
-              const labels: Record<string, string> = { message: '💬 チャット', project: '📁 プロジェクト', note: '📄 note' }
+              const labels: Record<string, string> = {
+                message: '💬 チャット',
+                project: '📁 プロジェクト',
+                task: '✅ タスク',
+                note: '📄 note',
+                daily_log: '📝 日次ログ',
+                weekly_summary: '📊 週次サマリー',
+              }
               return (
                 <div key={type}>
-                  <div style={styles.searchGroup}>{labels[type]}</div>
+                  <div style={styles.searchGroup}>{labels[type] || type}</div>
                   {items.map((r) => (
-                    <div key={r.id} style={styles.searchItem}>
-                      <div style={styles.searchItemTitle}>{r.title || r.snippet.slice(0, 30)}</div>
+                    <div
+                      key={r.id}
+                      style={styles.searchItem}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = '#f0f4ff' }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = '' }}
+                      onClick={() => {
+                        if (onNavigate) onNavigate(r.type, r.id)
+                        setShowSearch(false)
+                        setSearchQuery('')
+                        setSearchResults([])
+                      }}
+                    >
+                      <div style={styles.searchItemTitle}>{r.title || r.snippet.slice(0, 40)}</div>
                       <div style={styles.searchItemSnippet} dangerouslySetInnerHTML={{ __html: r.snippet }} />
                     </div>
                   ))}

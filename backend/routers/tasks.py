@@ -77,6 +77,10 @@ async def create_task(
            VALUES (?, ?, ?, ?, ?, ?)""",
         (task_id, project_id, body.title, body.planned_start, body.planned_end, body.sort_order),
     )
+    await db.execute(
+        "INSERT INTO search_index (doc_type, doc_id, title, content) VALUES ('task', ?, ?, ?)",
+        (task_id, body.title, body.title),
+    )
     await db.commit()
     return {"id": task_id}
 
@@ -121,6 +125,14 @@ async def update_task(
     set_clause = ", ".join(f"{k} = ?" for k in updates)
     values = list(updates.values()) + [task_id]
     await db.execute(f"UPDATE tasks SET {set_clause} WHERE id = ?", values)
+    if "title" in updates:
+        await db.execute(
+            "DELETE FROM search_index WHERE doc_type = 'task' AND doc_id = ?", (task_id,)
+        )
+        await db.execute(
+            "INSERT INTO search_index (doc_type, doc_id, title, content) VALUES ('task', ?, ?, ?)",
+            (task_id, updates["title"], updates["title"]),
+        )
     await db.commit()
 
     await manager.broadcast({"type": "progress_updated", "task_id": task_id})
@@ -134,6 +146,9 @@ async def delete_task(
     db: aiosqlite.Connection = Depends(get_db),
 ):
     await db.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+    await db.execute(
+        "DELETE FROM search_index WHERE doc_type = 'task' AND doc_id = ?", (task_id,)
+    )
     await db.commit()
     return {"ok": True}
 
